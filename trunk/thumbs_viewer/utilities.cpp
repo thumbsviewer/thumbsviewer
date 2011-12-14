@@ -80,7 +80,7 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 	if ( fi->entry_type == 2 )
 	{
 		// See if the stream is in the SAT.
-		if ( fi->size > fi->si->short_sect_cutoff && fi->si->sat != NULL )
+		if ( fi->size >= fi->si->short_sect_cutoff && fi->si->sat != NULL )
 		{
 			DWORD read = 0, total = 0;
 			long sat_index = fi->offset; 
@@ -292,7 +292,7 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 void update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh )
 {
 	char *buf = NULL;
-	if ( dh.short_stream_length > fi->si->short_sect_cutoff && fi->si->sat != NULL )
+	if ( dh.short_stream_length >= fi->si->short_sect_cutoff && fi->si->sat != NULL )
 	{
 		DWORD read = 0, total = 0;
 		long sat_index = dh.first_short_stream_sect; 
@@ -303,7 +303,7 @@ void update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh )
 
 		while ( total < dh.short_stream_length )
 		{
-			// The Short SAT should terminate with -2, but we shouldn't get here before the for loop completes.
+			// The SAT should terminate with -2, but we shouldn't get here before the for loop completes.
 			if ( sat_index < 0 )
 			{
 				free( buf );
@@ -319,7 +319,7 @@ void update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh )
 				return;
 			}
 
-			// Adjust the file pointer to the Short SAT
+			// Adjust the file pointer to the SAT
 			SetFilePointer( hFile, sector_offset, 0, FILE_BEGIN );
 			sector_offset = 512 + ( fi->si->sat[ sat_index ] * 512 );
 
