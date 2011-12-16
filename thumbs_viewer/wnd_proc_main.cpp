@@ -203,7 +203,7 @@ int CALLBACK CompareFunc( LPARAM lParam1, LPARAM lParam2, LPARAM lParamSort )
 
 			case 5:
 			{
-				return ( fi1->si->system > fi2->si->system );	// Based on our values for the system, this will be sorted by operating system age.
+				return ( fi1->si->version > fi2->si->version );	// Based on our values for the system, this will be sorted by operating system age.
 			}
 			break;
 
@@ -250,7 +250,7 @@ int CALLBACK CompareFunc( LPARAM lParam1, LPARAM lParam2, LPARAM lParamSort )
 
 			case 5:
 			{
-				return ( fi2->si->system > fi1->si->system ); // Based on our values for the system, this will be sorted by operating system age.
+				return ( fi2->si->version > fi1->si->version ); // Based on our values for the system, this will be sorted by operating system age.
 			}
 			break;
 
@@ -1396,11 +1396,11 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 						{
 							if ( ( ( fileinfo * )lvi.lParam )->si->system == 1 )
 							{
-								wcscpy_s( buf, MAX_PATH + 5, L"Windows Me/2000" );
+								swprintf_s( buf, MAX_PATH + 5, L"%d: Windows Me/2000", ( ( fileinfo * )lvi.lParam )->si->version );
 							}
 							else if ( ( ( fileinfo * )lvi.lParam )->si->system == 2 )
 							{
-								wcscpy_s( buf, MAX_PATH + 5, L"Windows XP/2003" );
+								swprintf_s( buf, MAX_PATH + 5, L"%d: Windows XP/2003", ( ( fileinfo * )lvi.lParam )->si->version );
 							}
 							else if ( ( ( fileinfo * )lvi.lParam )->si->system == 3 )
 							{
