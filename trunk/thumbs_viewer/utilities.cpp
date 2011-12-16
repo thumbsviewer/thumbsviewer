@@ -382,9 +382,12 @@ void update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh )
 		}
 	}
 
-	if ( buf != NULL )
+	if ( buf != NULL && dh.short_stream_length > ( 2 * sizeof( unsigned short ) ) )
 	{
 		unsigned long offset = ( unsigned short )buf[ 0 ];
+		memcpy_s( &fi->si->version, sizeof( unsigned short ), buf + 1, sizeof( unsigned short ) );
+		fi->si->version = ( ( fi->si->version & 0x00FF ) << 8 | ( fi->si->version & 0xFF00 ) >> 8 );
+
 		while ( offset < dh.short_stream_length && fi != NULL )
 		{
 			unsigned short entry_length = 0;
@@ -414,16 +417,39 @@ void update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh )
 				free( fi->filename );
 				fi->filename = original_name;
 
-				// See if the filename contains a path. ":\" should be enough to signify a path.
-				if ( name_length > 2 && fi->filename[ 1 ] == L':' && fi->filename[ 2 ] == L'\\' )
+				// There's no documentation on this and it's difficult to find test cases. Anyone want to install Windows Me? I didn't think so.
+				// I can't refine this until I get test cases, but this should suffice for now.
+				switch ( fi->si->version )
 				{
-					fi->si->system = 1;	// Me, 2000
+					case 4:	// 2000?
+					{
+						fi->si->system = 1;	// Me, 2000
+					}
+					break;
+
+					case 5:	// XP - no SP?
+					case 6:	// XP - SP1?
+					case 7:	// XP - SP2+?
+					{
+						fi->si->system = 2;	// XP, 2003
+					}
+					break;
+
+					default:	// Fall back to our old method of detection.
+					{
+						// See if the filename contains a path. ":\" should be enough to signify a path.
+						if ( name_length > 2 && fi->filename[ 1 ] == L':' && fi->filename[ 2 ] == L'\\' )
+						{
+							fi->si->system = 1;	// Me, 2000
+						}
+						else
+						{
+							fi->si->system = 2;	// XP, 2003
+						}
+					}
+					break;
 				}
-				else
-				{
-					fi->si->system = 2;	// XP, 2003
-				}
-				
+
 				fi = fi->next;
 			}
 
@@ -591,10 +617,11 @@ void build_directory( HANDLE hFile )
 			fi->offset = dh.first_short_stream_sect;
 			fi->size = dh.short_stream_length;
 			fi->entry_type = dh.entry_type;
-			fi->extension = 0;	// None set.
+			fi->extension = 0;		// None set.
 			fi->si = g_si;
-			fi->si->system = 0;	// Unknown until/if we process a catalog entry. There's really no definitive way to detect the system, but we can make assumptions.
-			fi->si->count++;	// Increment the number of entries.
+			fi->si->version = 0;	// Unknown until/if we process a catalog entry.
+			fi->si->system = 0;		// Unknown until/if we process a catalog entry.
+			fi->si->count++;		// Increment the number of entries.
 			fi->next = NULL;
 
 			// Store the fileinfo in the list (first in, first out)

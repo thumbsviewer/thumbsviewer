@@ -99,6 +99,7 @@ struct shared_info_linked_list
 {
 	wchar_t dbpath[ MAX_PATH ];
 	unsigned char system;		// 0 = Unknown, 1 = Me/2000, 2 = XP/2003, 3 = Vista/2008/7
+	unsigned short version;
 	long *sat;
 	long *ssat;
 	char *short_stream_container;
