@@ -131,9 +131,14 @@ struct fileinfo
 	fileinfo *next;
 };
 
+struct pathinfo
+{
+	wchar_t *filepath;			// Path the file/folder
+	unsigned short offset;		// Offset to the first file.
+};
+
 // Function prototypes
 LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam );
-LRESULT CALLBACK EditSubProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam );
 
 LRESULT CALLBACK ImageWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam );
 VOID CALLBACK TimerProc( HWND hWnd, UINT msg, UINT idTimer, DWORD dwTime );
