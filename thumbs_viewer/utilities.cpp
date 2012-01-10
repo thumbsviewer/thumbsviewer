@@ -810,116 +810,143 @@ unsigned __stdcall read_database( void *pArguments )
 	// Protects our global variables.
 	EnterCriticalSection( &open_cs );
 
-	wchar_t *filepath = ( wchar_t * )pArguments;
+	pathinfo *pi = ( pathinfo * )pArguments;
 
-	// Attempt to open our database file.
-	HANDLE hFile = CreateFile( filepath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
-	if ( hFile != INVALID_HANDLE_VALUE )
+	int fname_length = 0;
+	wchar_t *fname = pi->filepath + pi->offset;
+
+	int filepath_length = wcslen( pi->filepath ) + 1;	// Include NULL character.
+	
+	bool construct_filepath = ( filepath_length > pi->offset ? false : true );
+
+	wchar_t *filepath = NULL;
+
+	// We're going to open each file in the path info.
+	do
 	{
-		DWORD read = 0;
-		LARGE_INTEGER f_size = { 0 };
-
-		database_header dh = { 0 };
-
-		// Get the header information for this database.
-		ReadFile( hFile, &dh, sizeof( database_header ), &read, NULL );
-
-		if ( read < sizeof( database_header ) )
+		// Construct the filepath for each file.
+		if ( construct_filepath == true )
 		{
-			MessageBox( g_hWnd_main, L"Premature end of file encountered while reading the header.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+			fname_length = wcslen( fname ) + 1;	// Include '\' character
 
-			// We're done. Let other threads continue.
-			LeaveCriticalSection( &open_cs );
+			filepath = ( wchar_t * )malloc( sizeof( wchar_t ) * ( filepath_length + fname_length ) );
+			swprintf_s( filepath, filepath_length + fname_length, L"%s\\%s", pi->filepath, fname );
 
-			_endthreadex( 0 );
-			return 0;
+			// Move to the next file name.
+			fname += fname_length;
+		}
+		else	// Copy the filepath.
+		{
+			filepath = ( wchar_t * )malloc( sizeof( wchar_t ) * filepath_length );
+			wcscpy_s( filepath, filepath_length, pi->filepath );
 		}
 
-		// Make sure it's a thumbs database and the stucture was filled correctly.
-		if ( memcmp( dh.magic_identifier, "\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1", 8 ) != 0 )
+		// Attempt to open our database file.
+		HANDLE hFile = CreateFile( filepath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
+		if ( hFile != INVALID_HANDLE_VALUE )
 		{
+			DWORD read = 0;
+			LARGE_INTEGER f_size = { 0 };
+
+			database_header dh = { 0 };
+
+			// Get the header information for this database.
+			ReadFile( hFile, &dh, sizeof( database_header ), &read, NULL );
+
+			if ( read < sizeof( database_header ) )
+			{
+				CloseHandle( hFile );
+				free( filepath );
+
+				MessageBox( g_hWnd_main, L"Premature end of file encountered while reading the header.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+
+				continue;
+			}
+
+			// Make sure it's a thumbs database and the stucture was filled correctly.
+			if ( memcmp( dh.magic_identifier, "\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1", 8 ) != 0 )
+			{
+				CloseHandle( hFile );
+				free( filepath );
+
+				MessageBox( g_hWnd_main, L"The file is not a thumbs database.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+
+				continue;
+			}
+
+			// These values are the minimum at which we can multiply the sector size (512) and not go out of range.
+			if ( dh.num_sat_sects > 0x7FFFFF || dh.num_ssat_sects > 0x7FFFFF || dh.num_dis_sects > 0x810203 )
+			{
+				CloseHandle( hFile );
+				free( filepath );
+
+				MessageBox( g_hWnd_main, L"The total sector allocation table size is too large.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+
+				continue;
+			}
+
+			msat_size = sizeof( long ) * ( 109 + ( ( dh.num_dis_sects > 0 ? dh.num_dis_sects : 0 ) * 127 ) );
+			sat_size = ( dh.num_sat_sects > 0 ? dh.num_sat_sects : 0 ) * 512;
+			ssat_size = ( dh.num_ssat_sects > 0 ? dh.num_ssat_sects : 0 ) * 512;
+
+			GetFileSizeEx( hFile, &f_size );
+
+			// This is a simple check to make sure we don't allocate too much memory.
+			if ( ( msat_size + sat_size + ssat_size ) > f_size.QuadPart )
+			{
+				CloseHandle( hFile );
+				free( filepath );
+
+				MessageBox( g_hWnd_main, L"The total sector allocation table size exceeds the size of the database.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+
+				continue;
+			}
+
+			// This information is shared between entries within the database.
+			shared_info_linked_list *si = ( shared_info_linked_list * )malloc( sizeof( shared_info_linked_list ) );
+
+			si->next = g_si;
+			g_si = si;
+
+			si->sat = NULL;
+			si->ssat = NULL;
+			si->short_stream_container = NULL;
+			si->count = 0;
+			si->first_dir_sect = dh.first_dir_sect;
+			si->first_dis_sect = dh.first_dis_sect;
+			si->first_ssat_sect = dh.first_ssat_sect;
+			si->num_ssat_sects = dh.num_ssat_sects;
+			si->num_dis_sects = dh.num_dis_sects;
+			si->num_sat_sects = dh.num_sat_sects;
+			si->short_sect_cutoff = dh.short_sect_cutoff;
+			
+			wcscpy_s( si->dbpath, MAX_PATH, filepath );
+
+			build_msat( hFile );
+			build_sat( hFile );
+			build_ssat( hFile );
+			build_directory( hFile );
+			
+			// We no longer need this table.
+			free( g_msat );
+
+			// Close the input file.
 			CloseHandle( hFile );
-			free( filepath );
-
-			MessageBox( g_hWnd_main, L"The file is not a thumbs database.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-
-			// We're done. Let other threads continue.
-			LeaveCriticalSection( &open_cs );
-
-			_endthreadex( 0 );
-			return 0;
 		}
-
-		// These values are the minimum at which we can multiply the sector size (512) and not go out of range.
-		if ( dh.num_sat_sects > 0x7FFFFF || dh.num_ssat_sects > 0x7FFFFF || dh.num_dis_sects > 0x810203 )
+		else
 		{
-			MessageBox( g_hWnd_main, L"The total sector allocation table size is too large.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-			CloseHandle( hFile );
-
-			// We're done. Let other threads continue.
-			LeaveCriticalSection( &open_cs );
-
-			_endthreadex( 0 );
-			return 0;
+			// If this occurs, then there's something wrong with the user's system.
+			MessageBox( g_hWnd_main, L"The database file failed to open.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
 		}
 
-		msat_size = sizeof( long ) * ( 109 + ( ( dh.num_dis_sects > 0 ? dh.num_dis_sects : 0 ) * 127 ) );
-		sat_size = ( dh.num_sat_sects > 0 ? dh.num_sat_sects : 0 ) * 512;
-		ssat_size = ( dh.num_ssat_sects > 0 ? dh.num_ssat_sects : 0 ) * 512;
-
-		GetFileSizeEx( hFile, &f_size );
-
-		// This is a simple check to make sure we don't allocate too much memory.
-		if ( ( msat_size + sat_size + ssat_size ) > f_size.QuadPart )
-		{
-			MessageBox( g_hWnd_main, L"The total sector allocation table size exceeds the size of the database.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-			CloseHandle( hFile );
-
-			// We're done. Let other threads continue.
-			LeaveCriticalSection( &open_cs );
-
-			_endthreadex( 0 );
-			return 0;
-		}
-
-		// This information is shared between entries within the database.
-		shared_info_linked_list *si = ( shared_info_linked_list * )malloc( sizeof( shared_info_linked_list ) );
-
-		si->next = g_si;
-		g_si = si;
-
-		si->sat = NULL;
-		si->ssat = NULL;
-		si->short_stream_container = NULL;
-		si->count = 0;
-		si->first_dir_sect = dh.first_dir_sect;
-		si->first_dis_sect = dh.first_dis_sect;
-		si->first_ssat_sect = dh.first_ssat_sect;
-		si->num_ssat_sects = dh.num_ssat_sects;
-		si->num_dis_sects = dh.num_dis_sects;
-		si->num_sat_sects = dh.num_sat_sects;
-		si->short_sect_cutoff = dh.short_sect_cutoff;
-		
-		wcscpy_s( si->dbpath, MAX_PATH, filepath );
-
-		build_msat( hFile );
-		build_sat( hFile );
-		build_ssat( hFile );
-		build_directory( hFile );
-		
-		// We no longer need this table.
-		free( g_msat );
-
-		// Close the input file.
-		CloseHandle( hFile );
+		// Free the old filepath.
+		free( filepath );
 	}
-	else
-	{
-		// If this occurs, then there's something wrong with the user's system.
-		MessageBox( g_hWnd_main, L"The database file failed to open.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-	}
+	while ( construct_filepath == true && *fname != L'\0' );
 
-	free( filepath );
+	// Free the path info.
+	free( pi->filepath );
+	free( pi );
 
 	// We're done. Let other threads continue.
 	LeaveCriticalSection( &open_cs );
