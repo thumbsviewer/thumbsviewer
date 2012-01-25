@@ -1,6 +1,6 @@
 /*
     thumbs_viewer will extract thumbnail images from thumbs database files.
-    Copyright (C) 2011 Eric Kutcher
+    Copyright (C) 2011-2012 Eric Kutcher
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -30,8 +30,6 @@ unsigned long sat_size = 0;
 unsigned long ssat_size = 0;
 
 long *g_msat = NULL;
-
-shared_info_linked_list *g_si = NULL;
 
 // 20 bytes
 #define jfif_header		"\xFF\xD8\xFF\xE0\x00\x10\x4A\x46\x49\x46\x00\x01\x01\x01\x00\x60" \
@@ -289,7 +287,7 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 // Me, and 2000 will have full paths.
 // XP and 2003 will just have the file name.
 // Windows Vista, 2008, and 7 don't appear to have catalogs.
-void update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh )
+void update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, shared_info *g_si )
 {
 	char *buf = NULL;
 	if ( dh.short_stream_length >= fi->si->short_sect_cutoff && fi->si->sat != NULL )
@@ -464,7 +462,7 @@ void update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh )
 
 // Save the short stream container for later lookup.
 // This is always located in the SAT.
-void cache_short_stream_container( HANDLE hFile, directory_header dh )
+void cache_short_stream_container( HANDLE hFile, directory_header dh, shared_info *g_si )
 {
 	// Make sure we have a short stream container.
 	if ( dh.short_stream_length <= 0 || dh.first_short_stream_sect < 0 )
@@ -520,7 +518,7 @@ void cache_short_stream_container( HANDLE hFile, directory_header dh )
 // Builds a list of directory entries.
 // This list is found by traversing the SAT.
 // The directory is stored as a red-black tree in the database, but we can simply iterate through it with a linked list.
-void build_directory( HANDLE hFile )
+void build_directory( HANDLE hFile, shared_info *g_si )
 {
 	DWORD read = 0;
 	long sat_index = g_si->first_dir_sect;
@@ -535,7 +533,7 @@ void build_directory( HANDLE hFile )
 	fileinfo *g_fi = NULL;
 	fileinfo *last_fi = NULL;
 
-	unsigned int item_count = SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 ); // We don't need to call this for each item.
+	int item_count = SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 ); // We don't need to call this for each item.
 
 	// Save each directory sector from the SAT. The number of sectors is unknown.
 	while ( true )
@@ -547,14 +545,14 @@ void build_directory( HANDLE hFile )
 			{
 				if ( root_found == true )
 				{
-					cache_short_stream_container( hFile, root_dh );
+					cache_short_stream_container( hFile, root_dh, g_si );
 				}
 
 				g_fi->si->system = 3;	// Assume the system is Vista/2008/7
 
 				if ( catalog_found == true )
 				{
-					update_catalog_entries( hFile, g_fi, catalog_dh );
+					update_catalog_entries( hFile, g_fi, catalog_dh, g_si );
 				}
 
 				return;
@@ -659,7 +657,7 @@ void build_directory( HANDLE hFile )
 
 // Builds the Short SAT.
 // This table is found by traversing the SAT.
-void build_ssat( HANDLE hFile )
+void build_ssat( HANDLE hFile, shared_info *g_si )
 {
 	DWORD read = 0, total = 0;
 	long sat_index = g_si->first_ssat_sect;
@@ -706,7 +704,7 @@ void build_ssat( HANDLE hFile )
 
 // Builds the SAT.
 // We concatenate each sector listed in the MSAT to build the SAT.
-void build_sat( HANDLE hFile )
+void build_sat( HANDLE hFile, shared_info *g_si )
 {
 	DWORD read = 0, total = 0;
 	unsigned long sector_offset = 0;
@@ -735,7 +733,7 @@ void build_sat( HANDLE hFile )
 
 // Builds the MSAT.
 // This is only used to build the SAT and nothing more.
-void build_msat( HANDLE hFile )
+void build_msat( HANDLE hFile, shared_info *g_si )
 {
 	DWORD read = 0, total = 436;
 	unsigned long last_sector = 512 + ( g_si->first_dis_sect * 512 );	// Offset to the next DISAT (double indirect sector allocation table)
@@ -783,25 +781,6 @@ void build_msat( HANDLE hFile )
 	}
 
 	return;
-}
-
-// Clean up our allocated memory.
-void cleanup()
-{
-	shared_info_linked_list *si = g_si;
-	shared_info_linked_list *del_si = NULL;
-	while ( si != NULL )
-	{
-		del_si = si;
-		si = si->next;
-
-		free( del_si->sat );
-		free( del_si->ssat );
-		free( del_si->short_stream_container );
-		free( del_si );
-	}
-
-	g_si = NULL;
 }
 
 unsigned __stdcall read_database( void *pArguments )
@@ -903,11 +882,7 @@ unsigned __stdcall read_database( void *pArguments )
 			}
 
 			// This information is shared between entries within the database.
-			shared_info_linked_list *si = ( shared_info_linked_list * )malloc( sizeof( shared_info_linked_list ) );
-
-			si->next = g_si;
-			g_si = si;
-
+			shared_info *si = ( shared_info * )malloc( sizeof( shared_info ) );
 			si->sat = NULL;
 			si->ssat = NULL;
 			si->short_stream_container = NULL;
@@ -922,10 +897,10 @@ unsigned __stdcall read_database( void *pArguments )
 			
 			wcscpy_s( si->dbpath, MAX_PATH, filepath );
 
-			build_msat( hFile );
-			build_sat( hFile );
-			build_ssat( hFile );
-			build_directory( hFile );
+			build_msat( hFile, si );
+			build_sat( hFile, si );
+			build_ssat( hFile, si );
+			build_directory( hFile, si );
 			
 			// We no longer need this table.
 			free( g_msat );

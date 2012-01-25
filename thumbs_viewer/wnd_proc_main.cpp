@@ -1,6 +1,6 @@
 /*
     thumbs_viewer will extract thumbnail images from thumbs database files.
-    Copyright (C) 2011 Eric Kutcher
+    Copyright (C) 2011-2012 Eric Kutcher
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -684,6 +684,8 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 								num_items = SendMessage( g_hWnd_list, LVM_GETSELECTEDCOUNT, 0, 0 );
 							}
 
+							SetWindowText( hWnd, L"Thumbs Viewer - Please wait..." );
+
 							// Retrieve the lParam value from the selected listview item.
 							LVITEM lvi = { NULL };
 							lvi.mask = LVIF_PARAM;
@@ -791,6 +793,8 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 								// Free our buffer.
 								free( save_image );
 							}
+
+							SetWindowText( hWnd, PROGRAM_CAPTION );
 						}
 					}
 					break;
@@ -812,26 +816,39 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 						is_attached = false;
 						skip_main = false;
 
+						SetWindowText( hWnd, L"Thumbs Viewer - Please wait..." );
+
+						LVITEMA lvi = { NULL };
+						lvi.mask = LVIF_PARAM;
+
 						// See if we've selected all the items. We can clear the list much faster this way.
 						int num_items = SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 );
-						if ( num_items == SendMessage( g_hWnd_list, LVM_GETSELECTEDCOUNT, 0, 0 ) )
+						int sel_count = SendMessage( g_hWnd_list, LVM_GETSELECTEDCOUNT, 0, 0 );
+						if ( num_items == sel_count )
 						{
 							// Go through each item, and free their lParam values. current_fileinfo will get deleted here.
 							for ( int i = 0; i < num_items; ++i )
 							{
-								LVITEMA lvi = { NULL };
-								lvi.mask = LVIF_PARAM;
+								// We first need to get the lParam value otherwise the memory won't be freed.
 								lvi.iItem = i;
 								SendMessage( g_hWnd_list, LVM_GETITEM, 0, ( LPARAM )&lvi );
+
+								( ( fileinfo * )lvi.lParam )->si->count--;
+
+								// Remove our shared information from the linked list if there's no more items for this database.
+								if ( ( ( fileinfo * )lvi.lParam )->si->count == 0 )
+								{
+									free( ( ( fileinfo * )lvi.lParam )->si->sat );
+									free( ( ( fileinfo * )lvi.lParam )->si->ssat );
+									free( ( ( fileinfo * )lvi.lParam )->si->short_stream_container );
+									free( ( ( fileinfo * )lvi.lParam )->si );
+								}
 
 								// First free the filename pointer. We don't need to bother with the linked list pointer since it's only used during the initial read.
 								free( ( ( fileinfo * )lvi.lParam )->filename );
 								// Then free the fileinfo structure.
 								free( ( fileinfo * )lvi.lParam );
 							}
-
-							// Free our linked list of shared info.
-							cleanup();
 
 							SendMessage( g_hWnd_list, LVM_DELETEALLITEMS, 0, 0 );
 						}
@@ -848,8 +865,6 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 								if ( SendMessage( g_hWnd_list, LVM_GETITEMSTATE, i, LVIS_SELECTED ) == LVIS_SELECTED )
 								{
 									// We first need to get the lParam value otherwise the memory won't be freed.
-									LVITEMA lvi = { NULL };
-									lvi.mask = LVIF_PARAM;
 									lvi.iItem = i;
 									SendMessage( g_hWnd_list, LVM_GETITEM, 0, ( LPARAM )&lvi );
 
@@ -858,43 +873,30 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 									// Remove our shared information from the linked list if there's no more items for this database.
 									if ( ( ( fileinfo * )lvi.lParam )->si->count == 0 )
 									{
-										shared_info_linked_list *si = g_si;
-										shared_info_linked_list *last_si = NULL;
-										while ( si != NULL )
-										{
-											// Two pointers are guaranteed to be equal if they are of the same type and point to the same object.
-											if ( si->dbpath == ( ( fileinfo * )lvi.lParam )->si->dbpath )
-											{
-												if ( last_si != NULL ) // The info is somewhere in the middle of the linked list.
-												{
-													last_si->next = si->next;
-												}
-												else	// The info is at the beginning.
-												{
-													g_si = si->next;
-												}
-
-												free( si->sat );
-												free( si->ssat );
-												free( si->short_stream_container );
-												free( si );
-
-												break;
-											}
-											last_si = si;
-											si = si->next;
-										}
+										free( ( ( fileinfo * )lvi.lParam )->si->sat );
+										free( ( ( fileinfo * )lvi.lParam )->si->ssat );
+										free( ( ( fileinfo * )lvi.lParam )->si->short_stream_container );
+										free( ( ( fileinfo * )lvi.lParam )->si );
 									}
 							
 									// Free our filename, then fileinfo structure. We don't need to bother with the linked list pointer since it's only used during the initial read.
 									free( ( ( fileinfo * )lvi.lParam )->filename );
+									// Then free the fileinfo structure.
 									free( ( fileinfo * )lvi.lParam );
 
 									// Remove the list item.
 									SendMessage( g_hWnd_list, LVM_DELETEITEM, i, 0 );
+
+									--sel_count;
+									if ( sel_count == 0 )
+									{
+										break;
+									}
 								}
 							}
 						}
+
+						SetWindowText( hWnd, PROGRAM_CAPTION );
 
 						// Refresh the listview. (Updates the item count column)
 						InvalidateRect( g_hWnd_list, NULL, TRUE );
@@ -920,7 +922,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 					case MENU_ABOUT:
 					{
-						MessageBox( hWnd, L"Thumbs Viewer is made free under the GPLv3 license.\n\nCopyright \xA9 2011 Eric Kutcher", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONINFORMATION );
+						MessageBox( hWnd, L"Thumbs Viewer is made free under the GPLv3 license.\n\nCopyright \xA9 2011-2012 Eric Kutcher", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONINFORMATION );
 					}
 					break;
 
@@ -1542,6 +1544,17 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					lvi.iItem = i;
 					SendMessage( g_hWnd_list, LVM_GETITEM, 0, ( LPARAM )&lvi );
 
+					( ( fileinfo * )lvi.lParam )->si->count--;
+
+					// Remove our shared information from the linked list if there's no more items for this database.
+					if ( ( ( fileinfo * )lvi.lParam )->si->count == 0 )
+					{
+						free( ( ( fileinfo * )lvi.lParam )->si->sat );
+						free( ( ( fileinfo * )lvi.lParam )->si->ssat );
+						free( ( ( fileinfo * )lvi.lParam )->si->short_stream_container );
+						free( ( ( fileinfo * )lvi.lParam )->si );
+					}
+
 					// First free the filename pointer.
 					free( ( ( fileinfo * )lvi.lParam )->filename );
 					// Then free the fileinfo structure.
@@ -1554,9 +1567,6 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 			{
 				delete gdi_image;
 			}
-
-			// Free our linked list of shared info.
-			cleanup();
 
 			PostQuitMessage( 0 );
 			return 0;
