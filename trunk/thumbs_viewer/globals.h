@@ -1,6 +1,6 @@
 /*
     thumbs_viewer will extract thumbnail images from thumbs database files.
-    Copyright (C) 2011 Eric Kutcher
+    Copyright (C) 2011-2012 Eric Kutcher
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -95,7 +95,7 @@ struct directory_header
 };
 
 // Holds shared variables among database entries.
-struct shared_info_linked_list
+struct shared_info
 {
 	wchar_t dbpath[ MAX_PATH ];
 	unsigned char system;		// 0 = Unknown, 1 = Me/2000, 2 = XP/2003, 3 = Vista/2008/7
@@ -114,7 +114,6 @@ struct shared_info_linked_list
 	unsigned long short_sect_cutoff;
 
 	unsigned long count;		// Number of directory entries.
-	shared_info_linked_list *next;
 };
 
 // This structure holds information obtained as we read the database. It's passed as an lParam to our listview items.
@@ -126,14 +125,15 @@ struct fileinfo
 	wchar_t *filename;					// Name of the database entry.
 	long long date_modified;			// Data checksum
 	char entry_type;
-	shared_info_linked_list *si;
+	shared_info *si;
 
-	fileinfo *next;
+	fileinfo *next;						// Allows us to process catalog entries in order.
 };
 
+// Multi-file open structure.
 struct pathinfo
 {
-	wchar_t *filepath;			// Path the file/folder
+	wchar_t *filepath;			// Path to the file/folder
 	unsigned short offset;		// Offset to the first file.
 };
 
@@ -146,7 +146,6 @@ VOID CALLBACK TimerProc( HWND hWnd, UINT msg, UINT idTimer, DWORD dwTime );
 bool is_close( int a, int b );
 unsigned __stdcall read_database( void *pArguments );
 char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset );
-void cleanup();
 
 // These are all variables that are shared among the separate .cpp files.
 
@@ -179,7 +178,5 @@ extern POINT drag_rect;				// The current position of gdi_image in the image win
 extern POINT old_pos;				// The old position of gdi_image. Used to calculate the rate of change.
 
 extern float scale;					// Scale of the image.
-
-extern shared_info_linked_list *g_si;	// Linked list containing shared information for each database.
 
 #endif
