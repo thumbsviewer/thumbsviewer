@@ -21,9 +21,17 @@
 #define FILE_TYPE_JPEG	"\xFF\xD8\xFF\xE0"
 #define FILE_TYPE_PNG	"\x89\x50\x4E\x47\x0D\x0A\x1A\x0A"
 
-#define SNAP_WIDTH		10;		// The minimum distance at which our windows will attach together.
+// Return status codes for various functions.
+#define SC_FAIL	0
+#define SC_OK	1
+#define SC_QUIT	2
 
-CRITICAL_SECTION open_cs;
+HANDLE shutdown_mutex = NULL;	// Blocks shutdown while a worker thread is active.
+bool kill_thread = false;		// Allow for a clean shutdown.
+
+CRITICAL_SECTION pe_cs;			// Queues additional worker threads.
+bool in_thread = false;			// Flag to indicate that we're in a worker thread.
+bool skip_draw = false;			// Prevents WM_DRAWITEM from accessing listview items while we're removing them.
 
 unsigned long msat_size = 0;
 unsigned long sat_size = 0;
@@ -63,10 +71,420 @@ long *g_msat = NULL;
 						"\xD7\xD8\xD9\xDA\xE1\xE2\xE3\xE4\xE5\xE6\xE7\xE8\xE9\xEA\xF1\xF2" \
 						"\xF3\xF4\xF5\xF6\xF7\xF8\xF9\xFA"
 
-bool is_close( int a, int b )
+wchar_t *get_extension_from_filename( wchar_t *filename, unsigned long length )
 {
-	// See if the distance between two points is less than the snap width.
-	return abs( a - b ) < SNAP_WIDTH;
+	while ( length != 0 && filename[ --length ] != L'.' );
+
+	return filename + length + 1;
+}
+
+wchar_t *get_filename_from_path( wchar_t *path, unsigned long length )
+{
+	while ( length != 0 && path[ --length ] != L'\\' );
+
+	return path + length + 1;
+}
+
+int GetEncoderClsid( const WCHAR *format, CLSID *pClsid )
+{
+	UINT num = 0;          // number of image encoders
+	UINT size = 0;         // size of the image encoder array in bytes
+
+	Gdiplus::ImageCodecInfo *pImageCodecInfo = NULL;
+
+	Gdiplus::GetImageEncodersSize( &num, &size );
+	if ( size == 0 )
+	{
+		return -1;  // Failure
+	}
+
+	pImageCodecInfo = ( Gdiplus::ImageCodecInfo * )( malloc( size ) );
+	if ( pImageCodecInfo == NULL )
+	{
+		return -1;  // Failure
+	}
+
+	Gdiplus::GetImageEncoders( num, size, pImageCodecInfo );
+
+	for ( UINT j = 0; j < num; ++j )
+	{
+		if ( wcscmp( pImageCodecInfo[ j ].MimeType, format ) == 0 )
+		{
+			*pClsid = pImageCodecInfo[ j ].Clsid;
+			free( pImageCodecInfo );
+			return j;  // Success
+		}    
+	}
+
+	free( pImageCodecInfo );
+	return -1;  // Failure
+}
+
+// Create a stream to store our buffer and then store the stream into a GDI+ image object.
+Gdiplus::Image *create_image( char *buffer, unsigned long size, bool is_cmyk )
+{
+	ULONG written = 0;
+	IStream *is = NULL;
+	CreateStreamOnHGlobal( NULL, TRUE, &is );
+	is->Write( buffer, size, &written );
+	Gdiplus::Image *image = new Gdiplus::Image( is );
+
+	// If we have a CYMK based JPEG, then we're going to have to convert it to RGB.
+	if ( is_cmyk )
+	{
+		UINT height = image->GetHeight();
+		UINT width = image->GetWidth();
+
+		Gdiplus::Rect rc( 0, 0, width, height );
+		Gdiplus::BitmapData bmd;
+
+		// Bitmap with CMYK values.
+		Gdiplus::Bitmap bm( is );
+		// There's no mention of PixelFormat32bppCMYK on MSDN, but I think the minimum support is Windows XP with its latest service pack (SP3 for 32bit, and SP2 for 64bit).
+		if ( bm.LockBits( &rc, Gdiplus::ImageLockModeRead, PixelFormat32bppCMYK, &bmd ) == Gdiplus::Ok )
+		{
+			Gdiplus::BitmapData bmd2;
+			// New bitmap to convert CMYK to RGB
+			Gdiplus::Bitmap *new_image = new Gdiplus::Bitmap( width, height, PixelFormat32bppRGB );
+			if ( new_image->LockBits( &rc, Gdiplus::ImageLockModeWrite, PixelFormat32bppRGB, &bmd2 ) == Gdiplus::Ok )
+			{
+				UINT *raw_bm = ( UINT * )bmd.Scan0;
+				UINT *raw_bm2 = ( UINT * )bmd2.Scan0;
+
+				// Go through each pixel in the array.
+				for ( UINT row = 0; row < height; ++row )
+				{
+					for ( UINT col = 0; col < width; ++col )
+					{
+						// LockBits with PixelFormat32bppCMYK appears to remove the black channel and leaves us with CMY values in the range of 0 to 255.
+						// We take the compliment of cyan, magenta, and yellow to get our RGB values. (255 - C), (255 - M), (255 - Y)
+						// Notice that we're writing the pixels in reverse order (to flip the image on the horizontal axis).
+						raw_bm2[ ( ( ( ( height - 1 ) - row ) * bmd2.Stride ) / 4 ) + col ] = 0xFF000000
+							| ( ( 255 - ( ( 0x00FF0000 & raw_bm[ row * bmd.Stride / 4 + col ] ) >> 16 ) ) << 16 )
+							| ( ( 255 - ( ( 0x0000FF00 & raw_bm[ row * bmd.Stride / 4 + col ] ) >> 8 ) ) << 8 )
+							|   ( 255 - ( ( 0x000000FF & raw_bm[ row * bmd.Stride / 4 + col ] ) ) );
+					}
+				}
+
+				bm.UnlockBits( &bmd );
+				new_image->UnlockBits( &bmd2 );
+
+				// Delete the old image created from the image stream and set it to the new bitmap.
+				delete image;
+				image = NULL;
+				image = new_image;
+			}
+			else
+			{
+				delete new_image;
+			}
+		}
+	}
+
+	is->Release();
+
+	return image;
+}
+
+// This will allow our main thread to continue while secondary threads finish their processing.
+unsigned __stdcall cleanup( void *pArguments )
+{
+	// This mutex will be released when the thread gets killed.
+	shutdown_mutex = CreateSemaphore( NULL, 0, 1, NULL );
+
+	kill_thread = true;	// Causes secondary threads to cease processing and release the mutex.
+
+	// Wait for any active threads to complete. 5 second timeout in case we miss the release.
+	WaitForSingleObject( shutdown_mutex, 5000 );
+	CloseHandle( shutdown_mutex );
+	shutdown_mutex = NULL;
+
+	// DestroyWindow won't work on a window from a different thread. So we'll send a message to trigger it.
+	SendMessage( g_hWnd_main, WM_DESTROY_ALT, 0, 0 );
+
+	_endthreadex( 0 );
+	return 0;
+}
+
+unsigned __stdcall remove_items( void *pArguments )
+{
+	// This will block every other thread from entering until the first thread is complete.
+	EnterCriticalSection( &pe_cs );
+
+	in_thread = true;
+	
+	skip_draw = true;	// Prevent the listview from drawing while freeing lParam values.
+
+	SetWindowText( g_hWnd_main, L"Thumbs Viewer - Please wait..." );	// Update the window title.
+	EnableWindow( g_hWnd_list, FALSE );									// Prevent any interaction with the listview while we're processing.
+	SendMessage( g_hWnd_main, WM_CHANGE_CURSOR, TRUE, 0 );				// SetCursor only works from the main thread. Set it to an arrow with hourglass.
+	update_menus( true );												// Disable all processing menu items.
+
+	LVITEM lvi = { NULL };
+	lvi.mask = LVIF_PARAM;
+
+	int item_count = SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 );
+	int sel_count = SendMessage( g_hWnd_list, LVM_GETSELECTEDCOUNT, 0, 0 );
+
+	// See if we've selected all the items. We can clear the list much faster this way.
+	if ( item_count == sel_count )
+	{
+		// Go through each item, and free their lParam values. current_fileinfo will get deleted here.
+		for ( int i = 0; i < item_count; ++i )
+		{
+			// Stop processing and exit the thread.
+			if ( kill_thread == true )
+			{
+				break;
+			}
+
+			// We first need to get the lParam value otherwise the memory won't be freed.
+			lvi.iItem = i;
+			SendMessage( g_hWnd_list, LVM_GETITEM, 0, ( LPARAM )&lvi );
+
+			( ( fileinfo * )lvi.lParam )->si->count--;
+
+			// Remove our shared information from the linked list if there's no more items for this database.
+			if ( ( ( fileinfo * )lvi.lParam )->si->count == 0 )
+			{
+				free( ( ( fileinfo * )lvi.lParam )->si->sat );
+				free( ( ( fileinfo * )lvi.lParam )->si->ssat );
+				free( ( ( fileinfo * )lvi.lParam )->si->short_stream_container );
+				free( ( ( fileinfo * )lvi.lParam )->si );
+			}
+
+			// First free the filename pointer. We don't need to bother with the linked list pointer since it's only used during the initial read.
+			free( ( ( fileinfo * )lvi.lParam )->filename );
+			// Then free the fileinfo structure.
+			free( ( fileinfo * )lvi.lParam );
+		}
+
+		SendMessage( g_hWnd_list, LVM_DELETEALLITEMS, 0, 0 );
+	}
+	else	// Otherwise, we're going to have to go through each selection one at a time. (SLOOOOOW) Start from the end and work our way to the beginning.
+	{
+		// Scroll to the first item.
+		// This will reduce the time it takes to remove a large selection of items.
+		// When we delete the item from the end of the listview, the control won't force a paint refresh (since the item's not likely to be visible)
+		SendMessage( g_hWnd_list, LVM_ENSUREVISIBLE, 0, FALSE );
+
+		int *index_array = ( int * )malloc( sizeof( int ) * sel_count );
+
+		lvi.iItem = -1;	// Set this to -1 so that the LVM_GETNEXTITEM call can go through the list correctly.
+
+		// Create an index list of selected items (in reverse order).
+		for ( int i = 0; i < sel_count; i++ )
+		{
+			lvi.iItem = index_array[ sel_count - 1 - i ] = SendMessage( g_hWnd_list, LVM_GETNEXTITEM, lvi.iItem, LVNI_SELECTED );
+		}
+
+		for ( int i = 0; i < sel_count; i++ )
+		{
+			// Stop processing and exit the thread.
+			if ( kill_thread == true )
+			{
+				break;
+			}
+
+			// We first need to get the lParam value otherwise the memory won't be freed.
+			lvi.iItem = index_array[ i ];
+			SendMessage( g_hWnd_list, LVM_GETITEM, 0, ( LPARAM )&lvi );
+
+			( ( fileinfo * )lvi.lParam )->si->count--;
+
+			// Remove our shared information from the linked list if there's no more items for this database.
+			if ( ( ( fileinfo * )lvi.lParam )->si->count == 0 )
+			{
+				free( ( ( fileinfo * )lvi.lParam )->si->sat );
+				free( ( ( fileinfo * )lvi.lParam )->si->ssat );
+				free( ( ( fileinfo * )lvi.lParam )->si->short_stream_container );
+				free( ( ( fileinfo * )lvi.lParam )->si );
+			}
+	
+			// Free our filename, then fileinfo structure. We don't need to bother with the linked list pointer since it's only used during the initial read.
+			free( ( ( fileinfo * )lvi.lParam )->filename );
+			// Then free the fileinfo structure.
+			free( ( fileinfo * )lvi.lParam );
+
+			// Remove the list item.
+			SendMessage( g_hWnd_list, LVM_DELETEITEM, index_array[ i ], 0 );
+		}
+
+		free( index_array );
+	}
+
+	skip_draw = false;	// Allow drawing again.
+
+	update_menus( false );									// Enable the appropriate menu items.
+	SendMessage( g_hWnd_main, WM_CHANGE_CURSOR, FALSE, 0 );	// Reset the cursor.
+	EnableWindow( g_hWnd_list, TRUE );						// Allow the listview to be interactive. Also forces a refresh to update the item count column.
+	SetFocus( g_hWnd_list );								// Give focus back to the listview to allow shortcut keys.
+	SetWindowText( g_hWnd_main, PROGRAM_CAPTION );			// Reset the window title.
+
+	// Release the mutex if we're killing the thread.
+	if ( shutdown_mutex != NULL )
+	{
+		ReleaseSemaphore( shutdown_mutex, 1, NULL );
+	}
+
+	in_thread = false;
+
+	// We're done. Let other threads continue.
+	LeaveCriticalSection( &pe_cs );
+
+	_endthreadex( 0 );
+	return 0;
+}
+
+unsigned __stdcall save_items( void *pArguments )
+{
+	// This will block every other thread from entering until the first thread is complete.
+	EnterCriticalSection( &pe_cs );
+
+	in_thread = true;
+
+	SetWindowText( g_hWnd_main, L"Thumbs Viewer - Please wait..." );	// Update the window title.
+	EnableWindow( g_hWnd_list, FALSE );									// Prevent any interaction with the listview while we're processing.
+	SendMessage( g_hWnd_main, WM_CHANGE_CURSOR, TRUE, 0 );				// SetCursor only works from the main thread. Set it to an arrow with hourglass.
+	update_menus( true );												// Disable all processing menu items.
+
+	save_param *save_type = ( save_param * )pArguments;
+
+	wchar_t save_directory[ MAX_PATH ] = { 0 };
+	// Get the directory path from the id list.
+	SHGetPathFromIDList( save_type->lpiidl, save_directory );
+	CoTaskMemFree( save_type->lpiidl );
+	
+	// Depending on what was selected, get the number of items we'll be saving.
+	int save_items = ( save_type->save_all == true ? SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 ) : SendMessage( g_hWnd_list, LVM_GETSELECTEDCOUNT, 0, 0 ) );
+
+	// Retrieve the lParam value from the selected listview item.
+	LVITEM lvi = { NULL };
+	lvi.mask = LVIF_PARAM;
+	lvi.iItem = -1;	// Set this to -1 so that the LVM_GETNEXTITEM call can go through the list correctly.
+
+	// Go through all the items we'll be saving.
+	for ( int i = 0; i < save_items; ++i )
+	{
+		// Stop processing and exit the thread.
+		if ( kill_thread == true )
+		{
+			break;
+		}
+
+		lvi.iItem = ( save_type->save_all == true ? i : SendMessage( g_hWnd_list, LVM_GETNEXTITEM, lvi.iItem, LVNI_SELECTED ) );
+		SendMessage( g_hWnd_list, LVM_GETITEM, 0, ( LPARAM )&lvi );
+
+		unsigned long size = 0, header_offset = 0;	// Size excludes the header offset.
+		// Create a buffer to read in our new bitmap.
+		char *save_image = extract( ( ( fileinfo * )lvi.lParam ), size, header_offset );
+
+		// Directory + backslash + filename + extension + NULL character = ( 2 * MAX_PATH ) + 6
+		wchar_t fullpath[ ( 2 * MAX_PATH ) + 6 ] = { 0 };
+
+		wchar_t *filename = NULL;
+		if ( ( ( fileinfo * )lvi.lParam )->si->system == 1 )
+		{
+			// Windows Me and 2000 will have a full path for the filename and we can assume it has a "\" in it since we look for it when detecting the system.
+			filename = get_filename_from_path( ( ( fileinfo * )lvi.lParam )->filename, wcslen( ( ( fileinfo * )lvi.lParam )->filename ) );
+		}
+		else
+		{
+			filename = ( ( fileinfo * )lvi.lParam )->filename;
+		}
+
+		wchar_t *ext = get_extension_from_filename( filename, wcslen( filename ) );
+		if ( ( ( fileinfo * )lvi.lParam )->extension == 1 || ( ( fileinfo * )lvi.lParam )->extension == 3 )
+		{
+			// The extension in the filename might not be the actual type. So we'll append .jpg to the end of it.
+			if ( _wcsicmp( ext, L"jpg" ) == 0 || _wcsicmp( ext, L"jpeg" ) == 0 )
+			{
+				swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%s", save_directory, filename );
+			}
+			else
+			{
+				swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%s.jpg", save_directory, filename );
+			}
+		}
+		else if ( ( ( fileinfo * )lvi.lParam )->extension == 2 )
+		{
+			swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%s.png", save_directory, filename );
+		}
+		else
+		{
+			swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%s", save_directory, filename );
+		}
+
+		// If we have a CYMK based JPEG, then we're going to have to convert it to RGB.
+		if ( ( ( fileinfo * )lvi.lParam )->extension == 3 )
+		{
+			Gdiplus::Image *save_bm_image = create_image( save_image + header_offset, size, true );
+
+			// Get the class identifier for the JPEG encoder.
+			CLSID jpgClsid;
+			GetEncoderClsid( L"image/jpeg", &jpgClsid );
+
+			Gdiplus::EncoderParameters encoderParameters;
+			encoderParameters.Count = 1;
+			encoderParameters.Parameter[ 0 ].Guid = Gdiplus::EncoderQuality;
+			encoderParameters.Parameter[ 0 ].Type = Gdiplus::EncoderParameterValueTypeLong;
+			encoderParameters.Parameter[ 0 ].NumberOfValues = 1;
+			ULONG quality = 100;
+			encoderParameters.Parameter[ 0 ].Value = &quality;
+
+			// The size will differ from what's listed in the database since we had to reconstruct the image.
+			// Switch the encoder to PNG or BMP to save a lossless image.
+			if ( save_bm_image->Save( fullpath, &jpgClsid, &encoderParameters ) != Gdiplus::Ok )
+			{
+				MessageBox( g_hWnd_main, L"An error occurred while converting the image to save.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+			}
+
+			delete save_bm_image;
+		}
+		else
+		{
+			// Attempt to open a file for saving.
+			HANDLE hFile_save = CreateFile( fullpath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL );
+			if ( hFile_save != INVALID_HANDLE_VALUE )
+			{
+				// Write the buffer to our file.
+				DWORD dwBytesWritten = 0;
+				WriteFile( hFile_save, save_image + header_offset, size, &dwBytesWritten, NULL );
+
+				CloseHandle( hFile_save );
+			}
+
+			// See if the path was too long.
+			if ( GetLastError() == ERROR_PATH_NOT_FOUND )
+			{
+				MessageBox( g_hWnd_main, L"One or more files could not be saved. Please check the filename and path.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+			}
+		}
+		// Free our buffer.
+		free( save_image );
+	}
+
+	free( save_type );
+
+	update_menus( false );									// Enable the appropriate menu items.
+	SendMessage( g_hWnd_main, WM_CHANGE_CURSOR, FALSE, 0 );	// Reset the cursor.
+	EnableWindow( g_hWnd_list, TRUE );						// Allow the listview to be interactive.
+	SetFocus( g_hWnd_list );								// Give focus back to the listview to allow shortcut keys. 
+	SetWindowText( g_hWnd_main, PROGRAM_CAPTION );			// Reset the window title.
+
+	// Release the mutex if we're killing the thread.
+	if ( shutdown_mutex != NULL )
+	{
+		ReleaseSemaphore( shutdown_mutex, 1, NULL );
+	}
+
+	in_thread = false;
+
+	// We're done. Let other threads continue.
+	LeaveCriticalSection( &pe_cs );
+
+	_endthreadex( 0 );
+	return 0;
 }
 
 // Extract the file from the SAT or short stream container.
@@ -287,7 +705,7 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 // Me, and 2000 will have full paths.
 // XP and 2003 will just have the file name.
 // Windows Vista, 2008, and 7 don't appear to have catalogs.
-void update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, shared_info *g_si )
+char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, shared_info *g_si )
 {
 	char *buf = NULL;
 	if ( dh.short_stream_length >= fi->si->short_sect_cutoff && fi->si->sat != NULL )
@@ -301,12 +719,19 @@ void update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 
 		while ( total < dh.short_stream_length )
 		{
+			// Stop processing and exit the thread.
+			if ( kill_thread == true )
+			{
+				free( buf );
+				return SC_QUIT;
+			}
+
 			// The SAT should terminate with -2, but we shouldn't get here before the for loop completes.
 			if ( sat_index < 0 )
 			{
 				free( buf );
 				MessageBox( g_hWnd_main, L"Invalid SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-				return;
+				return SC_FAIL;
 			}
 			
 			// Each index should be no greater than the size of the SAT array.
@@ -314,7 +739,7 @@ void update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 			{
 				free( buf );
 				MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-				return;
+				return SC_FAIL;
 			}
 
 			// Adjust the file pointer to the SAT
@@ -333,7 +758,7 @@ void update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 			{
 				free( buf );
 				MessageBox( g_hWnd_main, L"Premature end of file encountered while updating the directory.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-				return;
+				return SC_FAIL;
 			}
 
 			sat_index = g_si->sat[ sat_index ];
@@ -350,12 +775,19 @@ void update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 		unsigned long bytes_to_read = 64;
 		while ( buf_offset < dh.short_stream_length )
 		{
+			// Stop processing and exit the thread.
+			if ( kill_thread == true )
+			{
+				free( buf );
+				return SC_QUIT;
+			}
+
 			// The Short SAT should terminate with -2, but we shouldn't get here before the for loop completes.
 			if ( ssat_index < 0 )
 			{
 				free( buf );
 				MessageBox( g_hWnd_main, L"Invalid Short SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-				return;
+				return SC_FAIL;
 			}
 			
 			// Each index should be no greater than the size of the Short SAT array.
@@ -363,7 +795,7 @@ void update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 			{
 				free( buf );
 				MessageBox( g_hWnd_main, L"Short SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-				return;
+				return SC_FAIL;
 			}
 
 			unsigned long s_offset = ssat_index * 64;
@@ -388,6 +820,13 @@ void update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 
 		while ( offset < dh.short_stream_length && fi != NULL )
 		{
+			// Stop processing and exit the thread.
+			if ( kill_thread == true )
+			{
+				free( buf );
+				return SC_QUIT;
+			}
+
 			unsigned short entry_length = 0;
 			memcpy_s( &entry_length, sizeof( unsigned short ), buf + offset, sizeof( unsigned short ) );
 			offset += sizeof( long );
@@ -402,8 +841,9 @@ void update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 
 			if ( name_length > dh.short_stream_length )
 			{
+				free( buf );
 				MessageBox( g_hWnd_main, L"Invalid directory entry.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-				break;
+				return SC_FAIL;
 			}
 
 			wchar_t *original_name = ( wchar_t * )malloc( name_length + sizeof( wchar_t ) );
@@ -458,16 +898,18 @@ void update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 	}
 
 	InvalidateRect( g_hWnd_list, NULL, TRUE );
+
+	return SC_OK;
 }
 
 // Save the short stream container for later lookup.
 // This is always located in the SAT.
-void cache_short_stream_container( HANDLE hFile, directory_header dh, shared_info *g_si )
+char cache_short_stream_container( HANDLE hFile, directory_header dh, shared_info *g_si )
 {
 	// Make sure we have a short stream container.
 	if ( dh.short_stream_length <= 0 || dh.first_short_stream_sect < 0 )
 	{
-		return;
+		return SC_OK;
 	}
 
 	DWORD read = 0, total = 0;
@@ -479,18 +921,24 @@ void cache_short_stream_container( HANDLE hFile, directory_header dh, shared_inf
 
 	while ( total < dh.short_stream_length )
 	{
+		// Stop processing and exit the thread.
+		if ( kill_thread == true )
+		{
+			return SC_QUIT;
+		}
+
 		// The SAT should terminate with -2, but we shouldn't get here before the for loop completes.
 		if ( sat_index < 0 )
 		{
 			MessageBox( g_hWnd_main, L"Invalid SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-			break;
+			return SC_FAIL;
 		}
 		
 		// Each index should be no greater than the size of the SAT array.
 		if ( sat_index > ( long )( g_si->num_sat_sects * 128 ) )
 		{
 			MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-			break;
+			return SC_FAIL;
 		}
 
 		// Adjust the file pointer to the Short SAT
@@ -508,17 +956,19 @@ void cache_short_stream_container( HANDLE hFile, directory_header dh, shared_inf
 		if ( read < bytes_to_read )
 		{
 			MessageBox( g_hWnd_main, L"Premature end of file encountered while building the short stream container.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-			break;
+			return SC_FAIL;
 		}
 
 		sat_index = g_si->sat[ sat_index ];
 	}
+
+	return SC_OK;
 }
 
 // Builds a list of directory entries.
 // This list is found by traversing the SAT.
 // The directory is stored as a red-black tree in the database, but we can simply iterate through it with a linked list.
-void build_directory( HANDLE hFile, shared_info *g_si )
+char build_directory( HANDLE hFile, shared_info *g_si )
 {
 	DWORD read = 0;
 	long sat_index = g_si->first_dir_sect;
@@ -538,6 +988,12 @@ void build_directory( HANDLE hFile, shared_info *g_si )
 	// Save each directory sector from the SAT. The number of sectors is unknown.
 	while ( true )
 	{
+		// Stop processing and exit the thread.
+		if ( kill_thread == true )
+		{
+			return SC_QUIT;
+		}
+
 		// The directory list should terminate with -2.
 		if ( sat_index < 0 )
 		{
@@ -555,12 +1011,12 @@ void build_directory( HANDLE hFile, shared_info *g_si )
 					update_catalog_entries( hFile, g_fi, catalog_dh, g_si );
 				}
 
-				return;
+				return SC_OK;
 			}
 			else
 			{
 				MessageBox( g_hWnd_main, L"Invalid SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-				return;
+				return SC_FAIL;
 			}
 		}
 		
@@ -568,7 +1024,7 @@ void build_directory( HANDLE hFile, shared_info *g_si )
 		if ( sat_index > ( long )( g_si->num_sat_sects * 128 ) )
 		{
 			MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-			return;
+			return SC_FAIL;
 		}
 
 		// Adjust the file pointer to the Short SAT
@@ -578,13 +1034,19 @@ void build_directory( HANDLE hFile, shared_info *g_si )
 		// There are 4 directory items per 512 byte sector.
 		for ( int i = 0; i < 4; i++ )
 		{
+			// Stop processing and exit the thread.
+			if ( kill_thread == true )
+			{
+				return SC_QUIT;
+			}
+
 			directory_header dh;
 			ReadFile( hFile, &dh, sizeof( directory_header ), &read, NULL );
 
 			if ( read < sizeof( directory_header ) )
 			{
 				MessageBox( g_hWnd_main, L"Premature end of file encountered while building the directory.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-				return;
+				return SC_FAIL;
 			}
 
 			// Skip invalid entries.
@@ -640,11 +1102,6 @@ void build_directory( HANDLE hFile, shared_info *g_si )
 			lvi.iSubItem = 0;
 			lvi.lParam = ( LPARAM )fi;
 			SendMessage( g_hWnd_list, LVM_INSERTITEM, 0, ( LPARAM )&lvi );
-
-			// Enable the Save All and Select All menu items.
-			EnableMenuItem( g_hMenu, MENU_SAVE_ALL, MF_ENABLED );
-			EnableMenuItem( g_hMenu, MENU_SELECT_ALL, MF_ENABLED );
-			EnableMenuItem( g_hMenuSub_context, MENU_SELECT_ALL, MF_ENABLED );
 		}
 
 		// Each index points to the next index.
@@ -652,12 +1109,12 @@ void build_directory( HANDLE hFile, shared_info *g_si )
 	}
 
 	// We should never get here.
-	return;
+	return SC_FAIL;
 }
 
 // Builds the Short SAT.
 // This table is found by traversing the SAT.
-void build_ssat( HANDLE hFile, shared_info *g_si )
+char build_ssat( HANDLE hFile, shared_info *g_si )
 {
 	DWORD read = 0, total = 0;
 	long sat_index = g_si->first_ssat_sect;
@@ -668,18 +1125,24 @@ void build_ssat( HANDLE hFile, shared_info *g_si )
 	// Save each sector from the SAT.
 	for ( unsigned long i = 0; i < g_si->num_ssat_sects; i++ )
 	{
+		// Stop processing and exit the thread.
+		if ( kill_thread == true )
+		{
+			return SC_QUIT;
+		}
+
 		// The Short SAT should terminate with -2, but we shouldn't get here before the for loop completes.
 		if ( sat_index < 0 )
 		{
 			MessageBox( g_hWnd_main, L"Invalid SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-			return;
+			return SC_FAIL;
 		}
 		
 		// Each index should be no greater than the size of the SAT array.
 		if ( sat_index > ( long )( g_si->num_sat_sects * 128 ) )
 		{
 			MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-			return;
+			return SC_FAIL;
 		}
 
 		// Adjust the file pointer to the Short SAT
@@ -692,19 +1155,19 @@ void build_ssat( HANDLE hFile, shared_info *g_si )
 		if ( read < 512 )
 		{
 			MessageBox( g_hWnd_main, L"Premature end of file encountered while building the Short SAT.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-			return;
+			return SC_FAIL;
 		}
 
 		// Each index points to the next index.
 		sat_index = g_si->sat[ sat_index ];
 	}
 
-	return;
+	return SC_OK;
 }
 
 // Builds the SAT.
 // We concatenate each sector listed in the MSAT to build the SAT.
-void build_sat( HANDLE hFile, shared_info *g_si )
+char build_sat( HANDLE hFile, shared_info *g_si )
 {
 	DWORD read = 0, total = 0;
 	unsigned long sector_offset = 0;
@@ -714,6 +1177,12 @@ void build_sat( HANDLE hFile, shared_info *g_si )
 	// Save each sector in the Master SAT.
 	for ( unsigned long msat_index = 0; msat_index < g_si->num_sat_sects; msat_index++ )
 	{
+		// Stop processing and exit the thread.
+		if ( kill_thread == true )
+		{
+			return SC_QUIT;
+		}
+
 		// Adjust the file pointer to the SAT
 		sector_offset = 512 + ( g_msat[ msat_index ] * 512 );
 		SetFilePointer( hFile, sector_offset, 0, FILE_BEGIN );
@@ -724,16 +1193,16 @@ void build_sat( HANDLE hFile, shared_info *g_si )
 		if ( read < 512 )
 		{
 			MessageBox( g_hWnd_main, L"Premature end of file encountered while building the SAT.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-			return;
+			return SC_FAIL;
 		}
 	}
 
-	return;
+	return SC_OK;
 }
 
 // Builds the MSAT.
 // This is only used to build the SAT and nothing more.
-void build_msat( HANDLE hFile, shared_info *g_si )
+char build_msat( HANDLE hFile, shared_info *g_si )
 {
 	DWORD read = 0, total = 436;
 	unsigned long last_sector = 512 + ( g_si->first_dis_sect * 512 );	// Offset to the next DISAT (double indirect sector allocation table)
@@ -749,12 +1218,18 @@ void build_msat( HANDLE hFile, shared_info *g_si )
 	if ( read < 436 )
 	{
 		MessageBox( g_hWnd_main, L"Premature end of file encountered while building the Master SAT.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-		return;
+		return SC_FAIL;
 	}
 
 	// If there are DISATs, then we'll add them to the MSAT list.
 	for ( unsigned long i = 0; i < g_si->num_dis_sects; i++ )
 	{
+		// Stop processing and exit the thread.
+		if ( kill_thread == true )
+		{
+			return SC_QUIT;
+		}
+
 		SetFilePointer( hFile, last_sector, 0, FILE_BEGIN );
 
 		// Read the first 127 SAT sectors (508 bytes) in the DISAT.
@@ -764,7 +1239,7 @@ void build_msat( HANDLE hFile, shared_info *g_si )
 		if ( read < 508 )
 		{
 			MessageBox( g_hWnd_main, L"Premature end of file encountered while building the Master SAT.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-			return;
+			return SC_FAIL;
 		}
 
 		// Get the pointer to the next DISAT.
@@ -773,21 +1248,28 @@ void build_msat( HANDLE hFile, shared_info *g_si )
 		if ( read < 4 )
 		{
 			MessageBox( g_hWnd_main, L"Premature end of file encountered while building the Master SAT.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-			return;
+			return SC_FAIL;
 		}
 
 		// The last index in the DISAT contains a pointer to the next DISAT. That's assuming there's any more DISATs left.
 		last_sector = 512 + ( last_sector * 512 );
 	}
 
-	return;
+	return SC_OK;
 }
 
 unsigned __stdcall read_database( void *pArguments )
 {
 	// This will block every other thread from entering until the first thread is complete.
 	// Protects our global variables.
-	EnterCriticalSection( &open_cs );
+	EnterCriticalSection( &pe_cs );
+
+	in_thread = true;
+
+	SetWindowText( g_hWnd_main, L"Thumbs Viewer - Please wait..." );	// Update the window title.
+	EnableWindow( g_hWnd_list, FALSE );									// Prevent any interaction with the listview while we're processing.
+	SendMessage( g_hWnd_main, WM_CHANGE_CURSOR, TRUE, 0 );				// SetCursor only works from the main thread. Set it to an arrow with hourglass.
+	update_menus( true );												// Disable all processing menu items.
 
 	pathinfo *pi = ( pathinfo * )pArguments;
 
@@ -803,6 +1285,12 @@ unsigned __stdcall read_database( void *pArguments )
 	// We're going to open each file in the path info.
 	do
 	{
+		// Stop processing and exit the thread.
+		if ( kill_thread == true )
+		{
+			break;
+		}
+
 		// Construct the filepath for each file.
 		if ( construct_filepath == true )
 		{
@@ -897,11 +1385,9 @@ unsigned __stdcall read_database( void *pArguments )
 			
 			wcscpy_s( si->dbpath, MAX_PATH, filepath );
 
-			build_msat( hFile, si );
-			build_sat( hFile, si );
-			build_ssat( hFile, si );
-			build_directory( hFile, si );
-			
+			// Short-circuit the remaining functions if the status code is quit. The functions must be called in this order.
+			if ( build_msat( hFile, si ) != SC_QUIT && build_sat( hFile, si ) != SC_QUIT && build_ssat( hFile, si ) != SC_QUIT && build_directory( hFile, si ) != SC_QUIT ){}
+
 			// We no longer need this table.
 			free( g_msat );
 
@@ -923,8 +1409,22 @@ unsigned __stdcall read_database( void *pArguments )
 	free( pi->filepath );
 	free( pi );
 
+	update_menus( false );									// Enable the appropriate menu items.
+	SendMessage( g_hWnd_main, WM_CHANGE_CURSOR, FALSE, 0 );	// Reset the cursor.
+	EnableWindow( g_hWnd_list, TRUE );						// Allow the listview to be interactive.
+	SetFocus( g_hWnd_list );								// Give focus back to the listview to allow shortcut keys. 
+	SetWindowText( g_hWnd_main, PROGRAM_CAPTION );			// Reset the window title.
+
+	// Release the mutex if we're killing the thread.
+	if ( shutdown_mutex != NULL )
+	{
+		ReleaseSemaphore( shutdown_mutex, 1, NULL );
+	}
+
+	in_thread = false;
+
 	// We're done. Let other threads continue.
-	LeaveCriticalSection( &open_cs );
+	LeaveCriticalSection( &pe_cs );
 
 	_endthreadex( 0 );
 	return 0;

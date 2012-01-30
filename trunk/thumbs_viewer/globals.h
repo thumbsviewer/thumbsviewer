@@ -52,6 +52,11 @@
 #define MENU_SELECT_ALL	1006
 #define MENU_REMOVE_SEL	1007
 
+#define SNAP_WIDTH		10;		// The minimum distance at which our windows will attach together.
+
+#define WM_DESTROY_ALT		WM_APP		// Allows non-window threads to call DestroyWindow.
+#define WM_CHANGE_CURSOR	WM_APP + 1	// Updates the window cursor.
+
 struct database_header
 {
 	char magic_identifier[ 8 ]; // {0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1} for current version, was {0x0e, 0x11, 0xfc, 0x0d, 0xd0, 0xcf, 0x11, 0xe0} on old, beta 2 files (late '92) 
@@ -137,15 +142,27 @@ struct pathinfo
 	unsigned short offset;		// Offset to the first file.
 };
 
+// Save To structure.
+struct save_param
+{
+	LPITEMIDLIST lpiidl;	// BrowseForFolder variable when saving files.
+	bool save_all;			// Save All = true, Save Selected = false.
+};
+
 // Function prototypes
 LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam );
 
 LRESULT CALLBACK ImageWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam );
 VOID CALLBACK TimerProc( HWND hWnd, UINT msg, UINT idTimer, DWORD dwTime );
 
-bool is_close( int a, int b );
+unsigned __stdcall cleanup( void *pArguments );
 unsigned __stdcall read_database( void *pArguments );
+unsigned __stdcall remove_items( void *pArguments );
+unsigned __stdcall save_items( void *pArguments );
 char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset );
+Gdiplus::Image *create_image( char *buffer, unsigned long size, bool is_cmyk );
+bool is_close( int a, int b );
+void update_menus( bool disable_all );
 
 // These are all variables that are shared among the separate .cpp files.
 
@@ -155,7 +172,7 @@ extern HWND g_hWnd_image;			// Handle to our image window.
 extern HWND g_hWnd_prompt;			// Handle to our prompt window.
 extern HWND g_hWnd_list;			// Handle to the listview control.
 
-extern CRITICAL_SECTION open_cs;	// Allow only one read_database thread to be active.
+extern CRITICAL_SECTION pe_cs;		// Allow only one read_database thread to be active.
 
 extern HFONT hFont;					// Handle to the system's message font.
 
@@ -178,5 +195,11 @@ extern POINT drag_rect;				// The current position of gdi_image in the image win
 extern POINT old_pos;				// The old position of gdi_image. Used to calculate the rate of change.
 
 extern float scale;					// Scale of the image.
+
+// Thread variables
+extern bool kill_thread;			// Allow for a clean shutdown.
+
+extern bool in_thread;				// Flag to indicate that we're in a worker thread.
+extern bool skip_draw;				// Prevents WM_DRAWITEM from accessing listview items while we're removing them.
 
 #endif
