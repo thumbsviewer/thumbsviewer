@@ -490,7 +490,6 @@ unsigned __stdcall save_items( void *pArguments )
 // Extract the file from the SAT or short stream container.
 char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 {
-	wchar_t *filepath = fi->si->dbpath;
 	char *buf = NULL;
 
 	if ( fi->entry_type == 2 )
@@ -504,7 +503,7 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 			unsigned long bytes_to_read = 512;
 
 			// Attempt to open a file for reading.
-			HANDLE hFile = CreateFile( filepath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
+			HANDLE hFile = CreateFile( fi->si->dbpath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
 			if ( hFile == INVALID_HANDLE_VALUE )
 			{
 				return NULL;
