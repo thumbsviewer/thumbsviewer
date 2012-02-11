@@ -909,7 +909,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 					// Set the image window's new title.
 					wchar_t new_title[ MAX_PATH + 30 ] = { 0 };
-					swprintf_s( new_title, MAX_PATH + 30, L"%s - %dx%d", ( ( fileinfo * )lvi.lParam )->filename, gdi_image->GetWidth(), gdi_image->GetHeight() );
+					swprintf_s( new_title, MAX_PATH + 30, L"%.259s - %dx%d", ( ( fileinfo * )lvi.lParam )->filename, gdi_image->GetWidth(), gdi_image->GetHeight() );
 					SetWindowText( g_hWnd_image, new_title );
 
 					// See if our image window is minimized and set the rectangle to its old size if it is.
@@ -1012,7 +1012,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 					// Set the image window's new title.
 					wchar_t new_title[ MAX_PATH + 30 ] = { 0 };
-					swprintf_s( new_title, MAX_PATH + 30, L"%s - %dx%d", filename, gdi_image->GetWidth(), gdi_image->GetHeight() );
+					swprintf_s( new_title, MAX_PATH + 30, L"%.259s - %dx%d", filename, gdi_image->GetWidth(), gdi_image->GetHeight() );
 					SetWindowText( g_hWnd_image, new_title );
 
 					return TRUE;
@@ -1055,7 +1055,8 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 				}
 
 				// Get the item's text.
-				wchar_t buf[ MAX_PATH + 5 ];
+				wchar_t tbuf[ MAX_PATH ];
+				wchar_t *buf = tbuf;
 				LVITEM lvi = { 0 };
 				lvi.mask = LVIF_PARAM;
 				lvi.iItem = dis->itemID;
@@ -1083,28 +1084,29 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					{
 						case 0:
 						{
-							swprintf_s( buf, MAX_PATH + 5, L"%d", dis->itemID + 1 );
+							swprintf_s( buf, MAX_PATH, L"%d", dis->itemID + 1 );
 						}
 						break;
 
 						case 1:
 						{
-							wcscpy_s( buf, MAX_PATH + 5, ( ( fileinfo * )lvi.lParam )->filename );
+							buf = ( ( fileinfo * )lvi.lParam )->filename;
 						}
 						break;
 
 						case 2:
 						{
+							buf = tbuf;	// Reset the buffer pointer.
 							RIGHT_COLUMNS = DT_RIGHT;
 
 							// Depending on our toggle, output the size in either kilobytes or bytes.
 							if ( is_kbytes_size == true )
 							{
-								swprintf_s( buf, MAX_PATH + 5, L"%d KB", ( ( fileinfo * )lvi.lParam )->size / 1024 );
+								swprintf_s( buf, MAX_PATH, L"%d KB", ( ( fileinfo * )lvi.lParam )->size / 1024 );
 							}
 							else
 							{
-								swprintf_s( buf, MAX_PATH + 5, L"%d B", ( ( fileinfo * )lvi.lParam )->size );
+								swprintf_s( buf, MAX_PATH, L"%d B", ( ( fileinfo * )lvi.lParam )->size );
 							}
 						}
 						break;
@@ -1116,11 +1118,11 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 							// Distinguish between Short SAT and SAT entries.
 							if ( ( ( fileinfo * )lvi.lParam )->size < ( ( fileinfo * )lvi.lParam )->si->short_sect_cutoff )
 							{
-								swprintf_s( buf, MAX_PATH + 5, L"%d in SSAT", ( ( fileinfo * )lvi.lParam )->offset );
+								swprintf_s( buf, MAX_PATH, L"%d in SSAT", ( ( fileinfo * )lvi.lParam )->offset );
 							}
 							else
 							{
-								swprintf_s( buf, MAX_PATH + 5, L"%d in SAT", ( ( fileinfo * )lvi.lParam )->offset );
+								swprintf_s( buf, MAX_PATH, L"%d in SAT", ( ( fileinfo * )lvi.lParam )->offset );
 							}
 						}
 						break;
@@ -1135,7 +1137,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 								ft.dwLowDateTime = ( DWORD )( ( fileinfo * )lvi.lParam )->date_modified;
 								ft.dwHighDateTime = ( DWORD )( ( ( fileinfo * )lvi.lParam )->date_modified >> 32 );
 								FileTimeToSystemTime( &ft, &st );
-								swprintf_s( buf, MAX_PATH + 5, L"%d/%d/%d (%02d:%02d:%02d.%d)", st.wMonth, st.wDay, st.wYear, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds );
+								swprintf_s( buf, MAX_PATH, L"%d/%d/%d (%02d:%02d:%02d.%d)", st.wMonth, st.wDay, st.wYear, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds );
 							}
 							else	// No date.
 							{
@@ -1148,26 +1150,26 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 						{
 							if ( ( ( fileinfo * )lvi.lParam )->si->system == 1 )
 							{
-								swprintf_s( buf, MAX_PATH + 5, L"%d: Windows Me/2000", ( ( fileinfo * )lvi.lParam )->si->version );
+								swprintf_s( buf, MAX_PATH, L"%d: Windows Me/2000", ( ( fileinfo * )lvi.lParam )->si->version );
 							}
 							else if ( ( ( fileinfo * )lvi.lParam )->si->system == 2 )
 							{
-								swprintf_s( buf, MAX_PATH + 5, L"%d: Windows XP/2003", ( ( fileinfo * )lvi.lParam )->si->version );
+								swprintf_s( buf, MAX_PATH, L"%d: Windows XP/2003", ( ( fileinfo * )lvi.lParam )->si->version );
 							}
 							else if ( ( ( fileinfo * )lvi.lParam )->si->system == 3 )
 							{
-								wcscpy_s( buf, MAX_PATH + 5, L"Windows Vista/2008/7" );
+								wcscpy_s( buf, MAX_PATH, L"Windows Vista/2008/7" );
 							}
 							else
 							{
-								wcscpy_s( buf, MAX_PATH + 5, L"Unknown" );
+								wcscpy_s( buf, MAX_PATH, L"Unknown" );
 							}
 						}
 						break;
 
 						case 6:
 						{
-							wcscpy_s( buf, MAX_PATH + 5, ( ( fileinfo * )lvi.lParam )->si->dbpath );
+							buf = ( ( fileinfo * )lvi.lParam )->si->dbpath;
 						}
 						break;
 					}

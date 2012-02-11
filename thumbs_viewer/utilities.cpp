@@ -399,20 +399,20 @@ unsigned __stdcall save_items( void *pArguments )
 			// The extension in the filename might not be the actual type. So we'll append .jpg to the end of it.
 			if ( _wcsicmp( ext, L"jpg" ) == 0 || _wcsicmp( ext, L"jpeg" ) == 0 )
 			{
-				swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%s", save_directory, filename );
+				swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%.259s", save_directory, filename );
 			}
 			else
 			{
-				swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%s.jpg", save_directory, filename );
+				swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%.259s.jpg", save_directory, filename );
 			}
 		}
 		else if ( ( ( fileinfo * )lvi.lParam )->extension == 2 )
 		{
-			swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%s.png", save_directory, filename );
+			swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%.259s.png", save_directory, filename );
 		}
 		else
 		{
-			swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%s", save_directory, filename );
+			swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%.259s", save_directory, filename );
 		}
 
 		// If we have a CYMK based JPEG, then we're going to have to convert it to RGB.
