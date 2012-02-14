@@ -1062,8 +1062,6 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 						cache_short_stream_container( hFile, root_dh, g_si );
 					}
 
-					g_fi->si->system = 3;	// Assume the system is Vista/2008/7
-
 					if ( catalog_found == true )
 					{
 						update_catalog_entries( hFile, g_fi, catalog_dh, g_si );
