@@ -917,6 +917,7 @@ char cache_short_stream_container( HANDLE hFile, directory_header dh, shared_inf
 	unsigned long bytes_to_read = 512;
 
 	g_si->short_stream_container = ( char * )malloc( sizeof( char ) * dh.short_stream_length );
+	memset( g_si->short_stream_container, 0, sizeof( char ) * dh.short_stream_length );
 
 	while ( total < dh.short_stream_length )
 	{
@@ -1053,6 +1054,22 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 			if ( read < sizeof( directory_header ) )
 			{
 				MessageBox( g_hWnd_main, L"Premature end of file encountered while building the directory.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+				
+				if ( g_fi != NULL )
+				{
+					if ( root_found == true )
+					{
+						cache_short_stream_container( hFile, root_dh, g_si );
+					}
+
+					g_fi->si->system = 3;	// Assume the system is Vista/2008/7
+
+					if ( catalog_found == true )
+					{
+						update_catalog_entries( hFile, g_fi, catalog_dh, g_si );
+					}
+				}
+				
 				return SC_FAIL;
 			}
 
