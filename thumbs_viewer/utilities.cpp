@@ -998,25 +998,33 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 		{
 			if ( sat_index == -2 )
 			{
-				if ( root_found == true )
+				if ( g_fi != NULL )
 				{
-					cache_short_stream_container( hFile, root_dh, g_si );
+					if ( root_found == true )
+					{
+						cache_short_stream_container( hFile, root_dh, g_si );
+					}
+
+					g_fi->si->system = 3;	// Assume the system is Vista/2008/7
+
+					if ( catalog_found == true )
+					{
+						update_catalog_entries( hFile, g_fi, catalog_dh, g_si );
+					}
+
+					return SC_OK;
 				}
-
-				g_fi->si->system = 3;	// Assume the system is Vista/2008/7
-
-				if ( catalog_found == true )
+				else
 				{
-					update_catalog_entries( hFile, g_fi, catalog_dh, g_si );
+					MessageBox( g_hWnd_main, L"No entries were found.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
 				}
-
-				return SC_OK;
 			}
 			else
 			{
 				MessageBox( g_hWnd_main, L"Invalid SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-				return SC_FAIL;
 			}
+
+			return SC_FAIL;
 		}
 		
 		// Each index should be no greater than the size of the SAT array.
