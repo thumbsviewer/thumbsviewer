@@ -502,6 +502,8 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 			unsigned long sector_offset = 512 + ( sat_index * 512 );
 			unsigned long bytes_to_read = 512;
 
+			bool exit_extract = false;
+
 			// Attempt to open a file for reading.
 			HANDLE hFile = CreateFile( fi->si->dbpath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
 			if ( hFile == INVALID_HANDLE_VALUE )
@@ -510,6 +512,7 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 			}
 
 			buf = ( char * )malloc( sizeof( char ) * fi->size );
+			memset( buf, 0, sizeof( char ) * fi->size );
 
 			while ( total < fi->size )
 			{
@@ -524,12 +527,16 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 				if ( sat_index > ( long )( fi->si->num_sat_sects * 128 ) )
 				{
 					MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-					break;
+					exit_extract = true;
 				}
 
 				// Adjust the file pointer to the Short SAT
 				SetFilePointer( hFile, sector_offset, 0, FILE_BEGIN );
-				sector_offset = 512 + ( fi->si->sat[ sat_index ] * 512 );
+
+				if ( exit_extract == false )
+				{
+					sector_offset = 512 + ( fi->si->sat[ sat_index ] * 512 );
+				}
 
 				if ( total + 512 > fi->size )
 				{
@@ -545,8 +552,15 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 					break;
 				}
 
+				if ( exit_extract == true )
+				{
+					break;
+				}
+
 				sat_index = fi->si->sat[ sat_index ];
 			}
+
+			CloseHandle( hFile );
 
 			header_offset = ( total > sizeof( unsigned long ) ? ( unsigned long )buf[ 0 ] : 0 );
 
@@ -591,15 +605,15 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 					fi->extension = 3;	// CMYK JPEG
 				}
 			}
-
-			CloseHandle( hFile );
 		}
 		else if ( fi->si->short_stream_container != NULL && fi->si->ssat != NULL )	// Stream is in the short stream.
 		{
 			DWORD read = 0, total = 0;
 			long ssat_index = fi->offset;
+			unsigned long sector_offset = 0;
 
 			buf = ( char * )malloc( sizeof( char ) * fi->size );
+			memset( buf, 0, sizeof( char ) * fi->size );
 
 			unsigned long buf_offset = 0;
 			unsigned long bytes_to_read = 64;
@@ -609,18 +623,17 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 				if ( ssat_index < 0 )
 				{
 					MessageBox( g_hWnd_main, L"Invalid Short SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-					return buf;
+					break;
 				}
 				
 				// Each index should be no greater than the size of the Short SAT array.
 				if ( ssat_index > ( long )( fi->si->num_ssat_sects * 128 ) )
 				{
 					MessageBox( g_hWnd_main, L"Short SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-					return buf;
+					break;
 				}
 
-
-				unsigned long sector_offset = ssat_index * 64;
+				sector_offset = ssat_index * 64;
 
 				if ( buf_offset + 64 > fi->size )
 				{
@@ -714,7 +727,10 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 		unsigned long sector_offset = 512 + ( sat_index * 512 );
 		unsigned long bytes_to_read = 512;
 
+		bool exit_update = false;
+
 		buf = ( char * )malloc( sizeof( char ) * dh.short_stream_length );
+		memset( buf, 0, sizeof( char ) * dh.short_stream_length );
 
 		while ( total < dh.short_stream_length )
 		{
@@ -728,22 +744,24 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 			// The SAT should terminate with -2, but we shouldn't get here before the for loop completes.
 			if ( sat_index < 0 )
 			{
-				free( buf );
 				MessageBox( g_hWnd_main, L"Invalid SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-				return SC_FAIL;
+				break;
 			}
 			
 			// Each index should be no greater than the size of the SAT array.
 			if ( sat_index > ( long )( fi->si->num_sat_sects * 128 ) )
 			{
-				free( buf );
 				MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-				return SC_FAIL;
+				exit_update = true;
 			}
 
 			// Adjust the file pointer to the SAT
 			SetFilePointer( hFile, sector_offset, 0, FILE_BEGIN );
-			sector_offset = 512 + ( fi->si->sat[ sat_index ] * 512 );
+
+			if ( exit_update == false )
+			{
+				sector_offset = 512 + ( fi->si->sat[ sat_index ] * 512 );
+			}
 
 			if ( total + 512 > dh.short_stream_length )
 			{
@@ -755,9 +773,13 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 
 			if ( read < bytes_to_read )
 			{
-				free( buf );
 				MessageBox( g_hWnd_main, L"Premature end of file encountered while updating the directory.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-				return SC_FAIL;
+				break;
+			}
+
+			if ( exit_update == true )
+			{
+				break;
 			}
 
 			sat_index = g_si->sat[ sat_index ];
@@ -766,9 +788,10 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 	else if ( fi->si->short_stream_container != NULL && fi->si->ssat != NULL )
 	{
 		long ssat_index = dh.first_short_stream_sect;
-		unsigned long sector_offset = ssat_index * 64;
+		unsigned long sector_offset = 0;
 
 		buf = ( char * )malloc( sizeof( char ) * dh.short_stream_length );
+		memset( buf, 0, sizeof( char ) * dh.short_stream_length );
 
 		unsigned long buf_offset = 0;
 		unsigned long bytes_to_read = 64;
@@ -784,27 +807,25 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 			// The Short SAT should terminate with -2, but we shouldn't get here before the for loop completes.
 			if ( ssat_index < 0 )
 			{
-				free( buf );
 				MessageBox( g_hWnd_main, L"Invalid Short SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-				return SC_FAIL;
+				break;
 			}
 			
 			// Each index should be no greater than the size of the Short SAT array.
 			if ( ssat_index > ( long )( fi->si->num_ssat_sects * 128 ) )
 			{
-				free( buf );
 				MessageBox( g_hWnd_main, L"Short SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-				return SC_FAIL;
+				break;
 			}
 
-			unsigned long s_offset = ssat_index * 64;
+			sector_offset = ssat_index * 64;
 
 			if ( buf_offset + 64 > dh.short_stream_length )
 			{
 				bytes_to_read = dh.short_stream_length - buf_offset;
 			}
 
-			memcpy_s( buf + buf_offset, dh.short_stream_length - buf_offset, fi->si->short_stream_container + s_offset, bytes_to_read );
+			memcpy_s( buf + buf_offset, dh.short_stream_length - buf_offset, fi->si->short_stream_container + sector_offset, bytes_to_read );
 			buf_offset += bytes_to_read;
 
 			ssat_index = fi->si->ssat[ ssat_index ];
@@ -916,6 +937,8 @@ char cache_short_stream_container( HANDLE hFile, directory_header dh, shared_inf
 	unsigned long sector_offset = 512 + ( sat_index * 512 );
 	unsigned long bytes_to_read = 512;
 
+	bool exit_cache = false;
+
 	g_si->short_stream_container = ( char * )malloc( sizeof( char ) * dh.short_stream_length );
 	memset( g_si->short_stream_container, 0, sizeof( char ) * dh.short_stream_length );
 
@@ -938,12 +961,17 @@ char cache_short_stream_container( HANDLE hFile, directory_header dh, shared_inf
 		if ( sat_index > ( long )( g_si->num_sat_sects * 128 ) )
 		{
 			MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-			return SC_FAIL;
+			exit_cache = true;
 		}
 
 		// Adjust the file pointer to the Short SAT
 		SetFilePointer( hFile, sector_offset, 0, FILE_BEGIN );
-		sector_offset = 512 + ( g_si->sat[ sat_index ] * 512 );
+
+		// Adjust the offset if we have a valid sat index.
+		if ( exit_cache == false )
+		{
+			sector_offset = 512 + ( g_si->sat[ sat_index ] * 512 );
+		}
 
 		if ( total + 512 > dh.short_stream_length )
 		{
@@ -956,6 +984,11 @@ char cache_short_stream_container( HANDLE hFile, directory_header dh, shared_inf
 		if ( read < bytes_to_read )
 		{
 			MessageBox( g_hWnd_main, L"Premature end of file encountered while building the short stream container.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+			return SC_FAIL;
+		}
+
+		if ( exit_cache == true )
+		{
 			return SC_FAIL;
 		}
 
@@ -983,6 +1016,8 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 	fileinfo *g_fi = NULL;
 	fileinfo *last_fi = NULL;
 
+	bool exit_build = false;
+
 	int item_count = SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 ); // We don't need to call this for each item.
 
 	// Save each directory sector from the SAT. The number of sectors is unknown.
@@ -1001,23 +1036,17 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 			{
 				if ( g_fi != NULL )
 				{
-					if ( root_found == true )
-					{
-						cache_short_stream_container( hFile, root_dh, g_si );
-					}
-
 					g_fi->si->system = 3;	// Assume the system is Vista/2008/7
-
-					if ( catalog_found == true )
-					{
-						update_catalog_entries( hFile, g_fi, catalog_dh, g_si );
-					}
-
-					return SC_OK;
 				}
-				else
+				else	// Free our shared info structure since we're not going to use it.
 				{
 					MessageBox( g_hWnd_main, L"No entries were found.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+
+					free( g_si->sat );
+					free( g_si->ssat );
+					free( g_si );
+
+					return SC_OK;
 				}
 			}
 			else
@@ -1025,19 +1054,23 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 				MessageBox( g_hWnd_main, L"Invalid SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
 			}
 
-			return SC_FAIL;
+			break;
 		}
 		
 		// Each index should be no greater than the size of the SAT array.
 		if ( sat_index > ( long )( g_si->num_sat_sects * 128 ) )
 		{
 			MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-			return SC_FAIL;
+			exit_build = true;
 		}
 
 		// Adjust the file pointer to the Short SAT
 		SetFilePointer( hFile, sector_offset, 0, FILE_BEGIN );
-		sector_offset = 512 + ( g_si->sat[ sat_index ] * 512 );
+
+		if ( exit_build == false )
+		{
+			sector_offset = 512 + ( g_si->sat[ sat_index ] * 512 );
+		}
 
 		// There are 4 directory items per 512 byte sector.
 		for ( int i = 0; i < 4; i++ )
@@ -1054,21 +1087,8 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 			if ( read < sizeof( directory_header ) )
 			{
 				MessageBox( g_hWnd_main, L"Premature end of file encountered while building the directory.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-				
-				if ( g_fi != NULL )
-				{
-					if ( root_found == true )
-					{
-						cache_short_stream_container( hFile, root_dh, g_si );
-					}
-
-					if ( catalog_found == true )
-					{
-						update_catalog_entries( hFile, g_fi, catalog_dh, g_si );
-					}
-				}
-				
-				return SC_FAIL;
+				exit_build = true;
+				break;
 			}
 
 			// Skip invalid entries.
@@ -1126,12 +1146,29 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 			SendMessage( g_hWnd_list, LVM_INSERTITEM, 0, ( LPARAM )&lvi );
 		}
 
+		if ( exit_build == true )
+		{
+			break;
+		}
+
 		// Each index points to the next index.
 		sat_index = g_si->sat[ sat_index ];
 	}
 
-	// We should never get here.
-	return SC_FAIL;
+	if ( g_fi != NULL )
+	{
+		if ( root_found == true )
+		{
+			cache_short_stream_container( hFile, root_dh, g_si );
+		}
+
+		if ( catalog_found == true )
+		{
+			update_catalog_entries( hFile, g_fi, catalog_dh, g_si );
+		}
+	}
+
+	return SC_OK;
 }
 
 // Builds the Short SAT.
@@ -1142,7 +1179,10 @@ char build_ssat( HANDLE hFile, shared_info *g_si )
 	long sat_index = g_si->first_ssat_sect;
 	unsigned long sector_offset = 512 + ( sat_index * 512 );
 
+	bool exit_build = false;
+
 	g_si->ssat = ( long * )malloc( ssat_size );
+	memset( g_si->ssat, -1, ssat_size );
 
 	// Save each sector from the SAT.
 	for ( unsigned long i = 0; i < g_si->num_ssat_sects; i++ )
@@ -1164,12 +1204,16 @@ char build_ssat( HANDLE hFile, shared_info *g_si )
 		if ( sat_index > ( long )( g_si->num_sat_sects * 128 ) )
 		{
 			MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-			return SC_FAIL;
+			exit_build = true;
 		}
 
 		// Adjust the file pointer to the Short SAT
 		SetFilePointer( hFile, sector_offset, 0, FILE_BEGIN );
-		sector_offset = 512 + ( g_si->sat[ sat_index ] * 512 );
+
+		if ( exit_build == false )
+		{
+			sector_offset = 512 + ( g_si->sat[ sat_index ] * 512 );
+		}
 
 		ReadFile( hFile, g_si->ssat + ( total / sizeof( long ) ), 512, &read, NULL );
 		total += read;
@@ -1177,6 +1221,11 @@ char build_ssat( HANDLE hFile, shared_info *g_si )
 		if ( read < 512 )
 		{
 			MessageBox( g_hWnd_main, L"Premature end of file encountered while building the Short SAT.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+			return SC_FAIL;
+		}
+
+		if ( exit_build == true )
+		{
 			return SC_FAIL;
 		}
 
@@ -1195,6 +1244,7 @@ char build_sat( HANDLE hFile, shared_info *g_si )
 	unsigned long sector_offset = 0;
 
 	g_si->sat = ( long * )malloc( sat_size );
+	memset( g_si->sat, -1, sat_size );
 
 	// Save each sector in the Master SAT.
 	for ( unsigned long msat_index = 0; msat_index < g_si->num_sat_sects; msat_index++ )
@@ -1203,6 +1253,13 @@ char build_sat( HANDLE hFile, shared_info *g_si )
 		if ( kill_thread == true )
 		{
 			return SC_QUIT;
+		}
+
+		// We shouldn't get here before the for loop completes.
+		if ( g_msat[ msat_index ] < 0 )
+		{
+			MessageBox( g_hWnd_main, L"Invalid Master SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+			return SC_FAIL;
 		}
 
 		// Adjust the file pointer to the SAT
@@ -1230,6 +1287,7 @@ char build_msat( HANDLE hFile, shared_info *g_si )
 	unsigned long last_sector = 512 + ( g_si->first_dis_sect * 512 );	// Offset to the next DISAT (double indirect sector allocation table)
 
 	g_msat = ( long * )malloc( msat_size );
+	memset( g_msat, -1, msat_size );
 
 	// Set the file pionter to the beginning of the master sector allocation table.
 	SetFilePointer( hFile, 76, 0, FILE_BEGIN );
