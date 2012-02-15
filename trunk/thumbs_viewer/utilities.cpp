@@ -1026,6 +1026,13 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 		// Stop processing and exit the thread.
 		if ( kill_thread == true )
 		{
+			if ( g_fi == NULL )
+			{
+				free( g_si->sat );
+				free( g_si->ssat );
+				free( g_si );
+			}
+
 			return SC_QUIT;
 		}
 
@@ -1038,15 +1045,9 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 				{
 					g_fi->si->system = 3;	// Assume the system is Vista/2008/7
 				}
-				else	// Free our shared info structure since we're not going to use it.
+				else
 				{
 					MessageBox( g_hWnd_main, L"No entries were found.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
-
-					free( g_si->sat );
-					free( g_si->ssat );
-					free( g_si );
-
-					return SC_OK;
 				}
 			}
 			else
@@ -1078,6 +1079,13 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 			// Stop processing and exit the thread.
 			if ( kill_thread == true )
 			{
+				if ( g_fi == NULL )
+				{
+					free( g_si->sat );
+					free( g_si->ssat );
+					free( g_si );
+				}
+
 				return SC_QUIT;
 			}
 
@@ -1167,6 +1175,12 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 			update_catalog_entries( hFile, g_fi, catalog_dh, g_si );
 		}
 	}
+	else	// Free our shared info structure if no item was added to the list.
+	{
+		free( g_si->sat );
+		free( g_si->ssat );
+		free( g_si );
+	}
 
 	return SC_OK;
 }
@@ -1190,6 +1204,10 @@ char build_ssat( HANDLE hFile, shared_info *g_si )
 		// Stop processing and exit the thread.
 		if ( kill_thread == true )
 		{
+			free( g_si->sat );
+			free( g_si->ssat );
+			free( g_si );
+
 			return SC_QUIT;
 		}
 
@@ -1252,6 +1270,9 @@ char build_sat( HANDLE hFile, shared_info *g_si )
 		// Stop processing and exit the thread.
 		if ( kill_thread == true )
 		{
+			free( g_si->sat );
+			free( g_si );
+
 			return SC_QUIT;
 		}
 
@@ -1286,7 +1307,7 @@ char build_msat( HANDLE hFile, shared_info *g_si )
 	DWORD read = 0, total = 436;
 	unsigned long last_sector = 512 + ( g_si->first_dis_sect * 512 );	// Offset to the next DISAT (double indirect sector allocation table)
 
-	g_msat = ( long * )malloc( msat_size );
+	g_msat = ( long * )malloc( msat_size );	// g_msat is freed in our read database function.
 	memset( g_msat, -1, msat_size );
 
 	// Set the file pionter to the beginning of the master sector allocation table.
@@ -1307,6 +1328,8 @@ char build_msat( HANDLE hFile, shared_info *g_si )
 		// Stop processing and exit the thread.
 		if ( kill_thread == true )
 		{
+			free( g_si );
+
 			return SC_QUIT;
 		}
 
