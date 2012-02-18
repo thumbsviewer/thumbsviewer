@@ -75,7 +75,7 @@ wchar_t *get_extension_from_filename( wchar_t *filename, unsigned long length )
 {
 	while ( length != 0 && filename[ --length ] != L'.' );
 
-	return filename + length + 1;
+	return filename + length;
 }
 
 wchar_t *get_filename_from_path( wchar_t *path, unsigned long length )
@@ -393,11 +393,11 @@ unsigned __stdcall save_items( void *pArguments )
 			filename = ( ( fileinfo * )lvi.lParam )->filename;
 		}
 
-		wchar_t *ext = get_extension_from_filename( filename, wcslen( filename ) );
 		if ( ( ( fileinfo * )lvi.lParam )->extension == 1 || ( ( fileinfo * )lvi.lParam )->extension == 3 )
 		{
+			wchar_t *ext = get_extension_from_filename( filename, wcslen( filename ) );
 			// The extension in the filename might not be the actual type. So we'll append .jpg to the end of it.
-			if ( _wcsicmp( ext, L"jpg" ) == 0 || _wcsicmp( ext, L"jpeg" ) == 0 )
+			if ( _wcsicmp( ext, L".jpg" ) == 0 || _wcsicmp( ext, L".jpeg" ) == 0 )
 			{
 				swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%.259s", save_directory, filename );
 			}
