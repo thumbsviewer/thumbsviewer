@@ -82,7 +82,32 @@ wchar_t *get_filename_from_path( wchar_t *path, unsigned long length )
 {
 	while ( length != 0 && path[ --length ] != L'\\' );
 
-	return path + length + 1;
+	if ( path[ length ] == L'\\' )
+	{
+		++length;
+	}
+	return path + length;
+}
+
+void reverse_string( wchar_t *string )
+{
+	if ( string == NULL )
+	{
+		return;
+	}
+
+	int end = wcslen( string ) - 1;
+	int start = 0;
+
+	while ( start < end )
+	{
+		string[ start ] ^= string[ end ];
+		string[ end ] ^= string[ start ];
+		string[ start ] ^= string[ end ];
+
+		++start;
+		--end;
+	}
 }
 
 int GetEncoderClsid( const WCHAR *format, CLSID *pClsid )
@@ -121,7 +146,7 @@ int GetEncoderClsid( const WCHAR *format, CLSID *pClsid )
 }
 
 // Create a stream to store our buffer and then store the stream into a GDI+ image object.
-Gdiplus::Image *create_image( char *buffer, unsigned long size, bool is_cmyk )
+Gdiplus::Image *create_image( char *buffer, unsigned long size, unsigned char format, unsigned int raw_width, unsigned int raw_height, unsigned int raw_size, int raw_stride )
 {
 	ULONG written = 0;
 	IStream *is = NULL;
@@ -130,7 +155,7 @@ Gdiplus::Image *create_image( char *buffer, unsigned long size, bool is_cmyk )
 	Gdiplus::Image *image = new Gdiplus::Image( is );
 
 	// If we have a CYMK based JPEG, then we're going to have to convert it to RGB.
-	if ( is_cmyk )
+	if ( format == 1 )
 	{
 		UINT height = image->GetHeight();
 		UINT width = image->GetWidth();
@@ -168,6 +193,73 @@ Gdiplus::Image *create_image( char *buffer, unsigned long size, bool is_cmyk )
 
 				bm.UnlockBits( &bmd );
 				new_image->UnlockBits( &bmd2 );
+
+				// Delete the old image created from the image stream and set it to the new bitmap.
+				delete image;
+				image = NULL;
+				image = new_image;
+			}
+			else
+			{
+				delete new_image;
+			}
+		}
+	}
+	else if ( ( format == 2 || format == 3 ) && raw_width > 0 && raw_height > 0 && raw_size > 0 )	// File might be a raw bitmap.
+	{
+		Gdiplus::Rect rc( 0, 0, raw_width, raw_height );
+		Gdiplus::BitmapData bmd;
+
+		unsigned int channels = raw_size / ( raw_width * raw_height );
+
+		if ( channels == 3 )
+		{
+			Gdiplus::Bitmap *new_image = new Gdiplus::Bitmap( raw_width, raw_height, PixelFormat24bppRGB );
+			if ( new_image->LockBits( &rc, Gdiplus::ImageLockModeWrite, PixelFormat24bppRGB, &bmd ) == Gdiplus::Ok )
+			{
+				if ( format == 2 )	// This image is flipped along the horizontal axis.
+				{
+					unsigned char *raw_bm = ( unsigned char * )bmd.Scan0;
+
+					raw_stride = abs( raw_stride );
+					unsigned int padding = 0;
+					if ( raw_size % ( raw_width * raw_height ) != 0 )
+					{
+						padding = raw_stride - ( raw_width * channels );
+					}	
+
+					// Copy each row (excluding any padding) in reverse order. 
+					for ( unsigned int offset = 0; offset < raw_size; offset += raw_stride )
+					{
+						memcpy_s( raw_bm + ( raw_size - ( raw_width * channels ) ) - offset - padding, raw_size - offset, buffer + offset, raw_stride - padding );
+					} 
+				}
+				else if ( format == 3 )	// This image is not flipped along the horizontal axis.
+				{
+					memcpy_s( bmd.Scan0, raw_size, buffer, raw_size );
+				}
+
+				new_image->UnlockBits( &bmd );
+
+				// Delete the old image created from the image stream and set it to the new bitmap.
+				delete image;
+				image = NULL;
+				image = new_image;
+			}
+			else
+			{
+				delete new_image;
+			}
+		}
+		else if ( channels == 4 )
+		{
+			// This bitmap contains an alpha channel.
+			Gdiplus::Bitmap *new_image = new Gdiplus::Bitmap( raw_width, raw_height, PixelFormat32bppARGB );
+			if ( new_image->LockBits( &rc, Gdiplus::ImageLockModeWrite, PixelFormat32bppARGB, &bmd ) == Gdiplus::Ok )
+			{
+				memcpy_s( bmd.Scan0, raw_size, buffer, raw_size );
+
+				new_image->UnlockBits( &bmd );
 
 				// Delete the old image created from the image stream and set it to the new bitmap.
 				delete image;
@@ -383,7 +475,7 @@ unsigned __stdcall save_items( void *pArguments )
 		wchar_t fullpath[ ( 2 * MAX_PATH ) + 6 ] = { 0 };
 
 		wchar_t *filename = NULL;
-		if ( ( ( fileinfo * )lvi.lParam )->si->system == 1 )
+		if ( ( ( fileinfo * )lvi.lParam )->si->system == 1 || ( ( fileinfo * )lvi.lParam )->extension == 4 )
 		{
 			// Windows Me and 2000 will have a full path for the filename and we can assume it has a "\" in it since we look for it when detecting the system.
 			filename = get_filename_from_path( ( ( fileinfo * )lvi.lParam )->filename, wcslen( ( ( fileinfo * )lvi.lParam )->filename ) );
@@ -406,9 +498,18 @@ unsigned __stdcall save_items( void *pArguments )
 				swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%.259s.jpg", save_directory, filename );
 			}
 		}
-		else if ( ( ( fileinfo * )lvi.lParam )->extension == 2 )
+		else if ( ( ( fileinfo * )lvi.lParam )->extension == 2 || ( ( ( fileinfo * )lvi.lParam )->extension == 4 && header_offset > 0 ) )
 		{
-			swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%.259s.png", save_directory, filename );
+			wchar_t *ext = get_extension_from_filename( filename, wcslen( filename ) );
+			// The extension in the filename might not be the actual type. So we'll append .png to the end of it.
+			if ( _wcsicmp( ext, L".png" ) == 0 )
+			{
+				swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%.259s", save_directory, filename );
+			}
+			else
+			{
+				swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%.259s.png", save_directory, filename );
+			}
 		}
 		else
 		{
@@ -418,7 +519,7 @@ unsigned __stdcall save_items( void *pArguments )
 		// If we have a CYMK based JPEG, then we're going to have to convert it to RGB.
 		if ( ( ( fileinfo * )lvi.lParam )->extension == 3 )
 		{
-			Gdiplus::Image *save_bm_image = create_image( save_image + header_offset, size, true );
+			Gdiplus::Image *save_bm_image = create_image( save_image + header_offset, size, 1 );
 
 			// Get the class identifier for the JPEG encoder.
 			CLSID jpgClsid;
@@ -443,21 +544,70 @@ unsigned __stdcall save_items( void *pArguments )
 		}
 		else
 		{
-			// Attempt to open a file for saving.
-			HANDLE hFile_save = CreateFile( fullpath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL );
-			if ( hFile_save != INVALID_HANDLE_VALUE )
+			if ( ( ( fileinfo * )lvi.lParam )->extension == 4 && header_offset > 0 )
 			{
-				// Write the buffer to our file.
-				DWORD dwBytesWritten = 0;
-				WriteFile( hFile_save, save_image + header_offset, size, &dwBytesWritten, NULL );
+				unsigned char format = 0;
+				unsigned int raw_width = 0;
+				unsigned int raw_height = 0;
+				unsigned int raw_size = 0;
+				int raw_stride = 0;
 
-				CloseHandle( hFile_save );
+				if ( header_offset == 0x18 )
+				{
+					memcpy_s( &raw_stride, sizeof( int ), save_image + ( header_offset - ( sizeof( unsigned int ) * 4 ) ), sizeof( int ) );
+					memcpy_s( &raw_width, sizeof( unsigned int ), save_image + ( header_offset - ( sizeof( unsigned int ) * 3 ) ), sizeof( unsigned int ) );
+					memcpy_s( &raw_height, sizeof( unsigned int ), save_image + ( header_offset - ( sizeof( unsigned int ) * 2 ) ), sizeof( unsigned int ) );
+					format = 2;
+				}
+				else if ( header_offset == 0x34 )
+				{
+					memcpy_s( &raw_width, sizeof( unsigned int ), save_image + sizeof( unsigned int ), sizeof( unsigned int ) );
+					memcpy_s( &raw_height, sizeof( unsigned int ), save_image + ( sizeof( unsigned int ) * 2 ), sizeof( unsigned int ) );
+					memcpy_s( &raw_stride, sizeof( int ), save_image + ( sizeof( unsigned int ) * 3 ), sizeof( int ) );
+					format = 3;
+				}
+				memcpy_s( &raw_size, sizeof( unsigned int ), save_image + ( header_offset - sizeof( unsigned int ) ), sizeof( unsigned int ) );
+
+				Gdiplus::Image *save_bm_image = create_image( save_image + header_offset, size, format, raw_width, raw_height, raw_size, raw_stride );
+
+				// Get the class identifier for the PNG encoder. We're going to save this as a PNG in order to preserve any alpha channels.
+				CLSID pngClsid;
+				GetEncoderClsid( L"image/png", &pngClsid );
+
+				Gdiplus::EncoderParameters encoderParameters;
+				encoderParameters.Count = 1;
+				encoderParameters.Parameter[ 0 ].Guid = Gdiplus::EncoderQuality;
+				encoderParameters.Parameter[ 0 ].Type = Gdiplus::EncoderParameterValueTypeLong;
+				encoderParameters.Parameter[ 0 ].NumberOfValues = 1;
+				ULONG quality = 100;
+				encoderParameters.Parameter[ 0 ].Value = &quality;
+
+				// The size will differ from what's listed in the database since we had to reconstruct the image.
+				if ( save_bm_image->Save( fullpath, &pngClsid, &encoderParameters ) != Gdiplus::Ok )
+				{
+					MessageBox( g_hWnd_main, L"An error occurred while converting the image to save.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+				}
+
+				delete save_bm_image;
 			}
-
-			// See if the path was too long.
-			if ( GetLastError() == ERROR_PATH_NOT_FOUND )
+			else
 			{
-				MessageBox( g_hWnd_main, L"One or more files could not be saved. Please check the filename and path.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+				// Attempt to open a file for saving.
+				HANDLE hFile_save = CreateFile( fullpath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL );
+				if ( hFile_save != INVALID_HANDLE_VALUE )
+				{
+					// Write the buffer to our file.
+					DWORD dwBytesWritten = 0;
+					WriteFile( hFile_save, save_image + header_offset, size, &dwBytesWritten, NULL );
+
+					CloseHandle( hFile_save );
+				}
+
+				// See if the path was too long.
+				if ( GetLastError() == ERROR_PATH_NOT_FOUND )
+				{
+					MessageBox( g_hWnd_main, L"One or more files could not be saved. Please check the filename and path.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+				}
 			}
 		}
 		// Free our buffer.
@@ -499,8 +649,8 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 		{
 			DWORD read = 0, total = 0;
 			long sat_index = fi->offset; 
-			unsigned long sector_offset = 512 + ( sat_index * 512 );
-			unsigned long bytes_to_read = 512;
+			unsigned long sector_offset = fi->si->sect_size + ( sat_index * fi->si->sect_size );
+			unsigned long bytes_to_read = fi->si->sect_size;
 
 			bool exit_extract = false;
 
@@ -524,7 +674,7 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 				}
 				
 				// Each index should be no greater than the size of the SAT array.
-				if ( sat_index > ( long )( fi->si->num_sat_sects * 128 ) )
+				if ( sat_index > ( long )( fi->si->num_sat_sects * ( fi->si->sect_size / sizeof( long ) ) ) )
 				{
 					MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
 					exit_extract = true;
@@ -535,10 +685,10 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 
 				if ( exit_extract == false )
 				{
-					sector_offset = 512 + ( fi->si->sat[ sat_index ] * 512 );
+					sector_offset = fi->si->sect_size + ( fi->si->sat[ sat_index ] * fi->si->sect_size );
 				}
 
-				if ( total + 512 > fi->size )
+				if ( total + fi->si->sect_size > fi->size )
 				{
 					bytes_to_read = fi->size - total;
 				}
@@ -562,18 +712,22 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 
 			CloseHandle( hFile );
 
-			header_offset = ( total > sizeof( unsigned long ) ? ( unsigned long )buf[ 0 ] : 0 );
-
-			if ( header_offset > total )
+			header_offset = 0;
+			if ( total > sizeof( unsigned long ) )
 			{
-				header_offset = 0;
+				memcpy_s( &header_offset, sizeof( unsigned long ), buf, sizeof( unsigned long ) );
+
+				if ( header_offset > total )
+				{
+					header_offset = 0;
+				}
 			}
 
 			size = total - header_offset;
 
 			// See if there's a second header.
 			// The first header will look like this:
-			// Header length (4 bytes)
+			// Header length (4 bytes) - I wonder if this value also dictates the content type?
 			// Some value (4 bytes)
 			// Content length (4 bytes)
 			if ( size > 2 && memcmp( buf + header_offset, "\xFF\xD8", 2 ) != 0 )
@@ -584,7 +738,9 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 				// Content length (4 bytes)
 				// Image width (4 bytes)
 				// Image height (4 bytes)
-				if ( ( unsigned long )( buf + header_offset )[ 0 ] == 1 )
+				unsigned long second_header = 0;
+				memcpy_s( &second_header, sizeof( unsigned long ), buf + header_offset, sizeof( unsigned long ) );
+				if ( second_header == 1 )
 				{
 					char *buf2 = ( char * )malloc( sizeof( char ) * total + 374 - 30 );
 
@@ -608,7 +764,7 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 		}
 		else if ( fi->si->short_stream_container != NULL && fi->si->ssat != NULL )	// Stream is in the short stream.
 		{
-			DWORD read = 0, total = 0;
+			DWORD read = 0;
 			long ssat_index = fi->offset;
 			unsigned long sector_offset = 0;
 
@@ -627,7 +783,7 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 				}
 				
 				// Each index should be no greater than the size of the Short SAT array.
-				if ( ssat_index > ( long )( fi->si->num_ssat_sects * 128 ) )
+				if ( ssat_index > ( long )( fi->si->num_ssat_sects * ( fi->si->sect_size / sizeof( long ) ) ) )
 				{
 					MessageBox( g_hWnd_main, L"Short SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
 					break;
@@ -646,17 +802,21 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 				ssat_index = fi->si->ssat[ ssat_index ];
 			}
 
-			header_offset = ( buf_offset > sizeof( unsigned long ) ? ( unsigned long )buf[ 0 ] : 0 );
-
-			if ( header_offset > fi->size )
+			header_offset = 0;
+			if ( buf_offset > sizeof( unsigned long ) )
 			{
-				header_offset = 0;
+				memcpy_s( &header_offset, sizeof( unsigned long ), buf, sizeof( unsigned long ) );
+
+				if ( header_offset > fi->size )
+				{
+					header_offset = 0;
+				}
 			}
 
 			size = fi->size - header_offset;
 
 			// The first header will look like this:
-			// Header length (4 bytes)
+			// Header length (4 bytes) - I wonder if this value also dictates the content type?
 			// Some value (4 bytes)
 			// Content length (4 bytes)
 			// See if there's a second header.
@@ -668,7 +828,9 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 				// Image width (4 bytes)
 				// Image height (4 bytes)
 				// Second header exists. Reconstruct the image.
-				if ( ( unsigned long )( buf + header_offset )[ 0 ] == 1 )
+				unsigned long second_header = 0;
+				memcpy_s( &second_header, sizeof( unsigned long ), buf + header_offset, sizeof( unsigned long ) );
+				if ( second_header == 1 )
 				{
 					char *buf2 = ( char * )malloc( sizeof( char ) * fi->size + 374 - 30 );
 
@@ -717,22 +879,22 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 // Me, and 2000 will have full paths.
 // XP and 2003 will just have the file name.
 // Windows Vista, 2008, and 7 don't appear to have catalogs.
-char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, shared_info *g_si )
+char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh )
 {
 	char *buf = NULL;
-	if ( dh.short_stream_length >= fi->si->short_sect_cutoff && fi->si->sat != NULL )
+	if ( dh.stream_length >= fi->si->short_sect_cutoff && fi->si->sat != NULL )
 	{
 		DWORD read = 0, total = 0;
-		long sat_index = dh.first_short_stream_sect; 
-		unsigned long sector_offset = 512 + ( sat_index * 512 );
-		unsigned long bytes_to_read = 512;
+		long sat_index = dh.first_stream_sect; 
+		unsigned long sector_offset = fi->si->sect_size + ( sat_index * fi->si->sect_size );
+		unsigned long bytes_to_read = fi->si->sect_size;
 
 		bool exit_update = false;
 
-		buf = ( char * )malloc( sizeof( char ) * dh.short_stream_length );
-		memset( buf, 0, sizeof( char ) * dh.short_stream_length );
+		buf = ( char * )malloc( sizeof( char ) * dh.stream_length );
+		memset( buf, 0, sizeof( char ) * dh.stream_length );
 
-		while ( total < dh.short_stream_length )
+		while ( total < dh.stream_length )
 		{
 			// Stop processing and exit the thread.
 			if ( kill_thread == true )
@@ -749,7 +911,7 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 			}
 			
 			// Each index should be no greater than the size of the SAT array.
-			if ( sat_index > ( long )( fi->si->num_sat_sects * 128 ) )
+			if ( sat_index > ( long )( fi->si->num_sat_sects * ( fi->si->sect_size / sizeof( long ) ) ) )
 			{
 				MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
 				exit_update = true;
@@ -760,12 +922,12 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 
 			if ( exit_update == false )
 			{
-				sector_offset = 512 + ( fi->si->sat[ sat_index ] * 512 );
+				sector_offset = fi->si->sect_size + ( fi->si->sat[ sat_index ] * fi->si->sect_size );
 			}
 
-			if ( total + 512 > dh.short_stream_length )
+			if ( total + fi->si->sect_size > dh.stream_length )
 			{
-				bytes_to_read = dh.short_stream_length - total;
+				bytes_to_read = dh.stream_length - total;
 			}
 
 			ReadFile( hFile, buf + total, bytes_to_read, &read, NULL );
@@ -782,20 +944,20 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 				break;
 			}
 
-			sat_index = g_si->sat[ sat_index ];
+			sat_index = fi->si->sat[ sat_index ];
 		}
 	}
 	else if ( fi->si->short_stream_container != NULL && fi->si->ssat != NULL )
 	{
-		long ssat_index = dh.first_short_stream_sect;
+		long ssat_index = dh.first_stream_sect;
 		unsigned long sector_offset = 0;
 
-		buf = ( char * )malloc( sizeof( char ) * dh.short_stream_length );
-		memset( buf, 0, sizeof( char ) * dh.short_stream_length );
+		buf = ( char * )malloc( sizeof( char ) * dh.stream_length );
+		memset( buf, 0, sizeof( char ) * dh.stream_length );
 
 		unsigned long buf_offset = 0;
 		unsigned long bytes_to_read = 64;
-		while ( buf_offset < dh.short_stream_length )
+		while ( buf_offset < dh.stream_length )
 		{
 			// Stop processing and exit the thread.
 			if ( kill_thread == true )
@@ -812,7 +974,7 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 			}
 			
 			// Each index should be no greater than the size of the Short SAT array.
-			if ( ssat_index > ( long )( fi->si->num_ssat_sects * 128 ) )
+			if ( ssat_index > ( long )( fi->si->num_ssat_sects * ( fi->si->sect_size / sizeof( long ) ) ) )
 			{
 				MessageBox( g_hWnd_main, L"Short SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
 				break;
@@ -820,25 +982,30 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 
 			sector_offset = ssat_index * 64;
 
-			if ( buf_offset + 64 > dh.short_stream_length )
+			if ( buf_offset + 64 > dh.stream_length )
 			{
-				bytes_to_read = dh.short_stream_length - buf_offset;
+				bytes_to_read = dh.stream_length - buf_offset;
 			}
 
-			memcpy_s( buf + buf_offset, dh.short_stream_length - buf_offset, fi->si->short_stream_container + sector_offset, bytes_to_read );
+			memcpy_s( buf + buf_offset, dh.stream_length - buf_offset, fi->si->short_stream_container + sector_offset, bytes_to_read );
 			buf_offset += bytes_to_read;
 
 			ssat_index = fi->si->ssat[ ssat_index ];
 		}
 	}
 
-	if ( buf != NULL && dh.short_stream_length > ( 2 * sizeof( unsigned short ) ) )
+	if ( buf != NULL && dh.stream_length > ( 2 * sizeof( unsigned short ) ) )
 	{
-		unsigned long offset = ( unsigned short )buf[ 0 ];
-		memcpy_s( &fi->si->version, sizeof( unsigned short ), buf + 1, sizeof( unsigned short ) );
-		fi->si->version = ( ( fi->si->version & 0x00FF ) << 8 | ( fi->si->version & 0xFF00 ) >> 8 );
+		// 2 byte offset, 2 byte version, 4 bytes number of entries.
+		unsigned long offset = 0;
+		memcpy_s( &offset, sizeof( unsigned long ), buf, sizeof( unsigned short ) );
+		memcpy_s( &fi->si->version, sizeof( unsigned short ), buf + sizeof( unsigned short ), sizeof( unsigned short ) );
 
-		while ( offset < dh.short_stream_length && fi != NULL )
+		fileinfo *root_fi = fi;
+		fileinfo *last_fi = NULL;
+		wchar_t sid[ 32 ];
+
+		while ( offset < dh.stream_length )
 		{
 			// Stop processing and exit the thread.
 			if ( kill_thread == true )
@@ -847,8 +1014,21 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 				return SC_QUIT;
 			}
 
-			unsigned short entry_length = 0;
-			memcpy_s( &entry_length, sizeof( unsigned short ), buf + offset, sizeof( unsigned short ) );
+			// We may have to scan the linked list for the next item. Reset it to the last item before the scan.
+			if ( fi == NULL )
+			{
+				if ( last_fi != NULL )
+				{
+					fi = last_fi;
+				}
+				else
+				{
+					break;	// If no last info was set, then we can't continue.
+				}
+			}
+
+			unsigned long entry_length = 0;
+			memcpy_s( &entry_length, sizeof( unsigned long ), buf + offset, sizeof( unsigned long ) );
 			offset += sizeof( long );
 			unsigned long entry_num = 0;
 			memcpy_s( &entry_num, sizeof( unsigned long ), buf + offset, sizeof( unsigned long ) );
@@ -857,9 +1037,19 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 			memcpy_s( &date_modified, sizeof( __int64 ), buf + offset, 8 );
 			offset += sizeof( __int64 );
 
+			// It seems that version 4 databases have an additional value before the filename.
+			if ( fi->si->sect_size == 4096 )
+			{
+				unsigned long unknown = 0;	// Padding?
+				memcpy_s( &unknown, sizeof( unsigned long ), buf + offset, sizeof( unsigned long ) );
+				offset += sizeof( long );
+
+				entry_length -= sizeof( unsigned long );
+			}
+
 			unsigned long name_length = entry_length - 0x14;
 
-			if ( name_length > dh.short_stream_length )
+			if ( name_length > dh.stream_length )
 			{
 				free( buf );
 				MessageBox( g_hWnd_main, L"Invalid directory entry.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
@@ -871,6 +1061,28 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 
 			if ( fi != NULL )
 			{
+				// We need to verify that the entry number and sid match.
+				// The catalog entries generally appear to be in order, but the actual content in our linked list might not be. I've seen this in ehthumbs.db files.
+				swprintf_s( sid, 32, L"%u", ( fi->si->version == 1 ? entry_num * 10 : entry_num ) );	// The entry number needs to be multiplied by 10 if the version is 1.
+				reverse_string( sid );
+				if ( wcscmp( sid, fi->filename ) != 0 )
+				{
+					last_fi = fi;
+
+					// If we used a tree instead of a linked list, this would be much faster, but it's overkill since this isn't common.
+					fileinfo *temp_fi = root_fi;
+					while ( temp_fi != NULL )
+					{
+						if ( wcscmp( sid, temp_fi->filename ) == 0 )
+						{
+							fi = temp_fi;
+							break;
+						}
+
+						temp_fi = temp_fi->next;
+					}
+				}
+
 				fi->date_modified = date_modified;
 				free( fi->filename );
 				fi->filename = original_name;
@@ -885,6 +1097,7 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 					}
 					break;
 
+					case 1: // Windows Media Center edition (XP, Vista, 7) has ehthumbs.db, ehthumbs_vista.db, Image.db, Video.db, etc. Are there version 1 databases not found on WMC systems?
 					case 5:	// XP - no SP?
 					case 6:	// XP - SP1?
 					case 7:	// XP - SP2+?
@@ -927,22 +1140,22 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh, sh
 char cache_short_stream_container( HANDLE hFile, directory_header dh, shared_info *g_si )
 {
 	// Make sure we have a short stream container.
-	if ( dh.short_stream_length <= 0 || dh.first_short_stream_sect < 0 )
+	if ( dh.stream_length <= 0 || dh.first_stream_sect < 0 )
 	{
 		return SC_OK;
 	}
 
 	DWORD read = 0, total = 0;
-	long sat_index = dh.first_short_stream_sect; 
-	unsigned long sector_offset = 512 + ( sat_index * 512 );
-	unsigned long bytes_to_read = 512;
+	long sat_index = dh.first_stream_sect; 
+	unsigned long sector_offset = g_si->sect_size + ( sat_index * g_si->sect_size );
+	unsigned long bytes_to_read = g_si->sect_size;
 
 	bool exit_cache = false;
 
-	g_si->short_stream_container = ( char * )malloc( sizeof( char ) * dh.short_stream_length );
-	memset( g_si->short_stream_container, 0, sizeof( char ) * dh.short_stream_length );
+	g_si->short_stream_container = ( char * )malloc( sizeof( char ) * dh.stream_length );
+	memset( g_si->short_stream_container, 0, sizeof( char ) * dh.stream_length );
 
-	while ( total < dh.short_stream_length )
+	while ( total < dh.stream_length )
 	{
 		// Stop processing and exit the thread.
 		if ( kill_thread == true )
@@ -958,7 +1171,7 @@ char cache_short_stream_container( HANDLE hFile, directory_header dh, shared_inf
 		}
 		
 		// Each index should be no greater than the size of the SAT array.
-		if ( sat_index > ( long )( g_si->num_sat_sects * 128 ) )
+		if ( sat_index > ( long )( g_si->num_sat_sects * ( g_si->sect_size / sizeof( long ) ) ) )
 		{
 			MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
 			exit_cache = true;
@@ -970,12 +1183,12 @@ char cache_short_stream_container( HANDLE hFile, directory_header dh, shared_inf
 		// Adjust the offset if we have a valid sat index.
 		if ( exit_cache == false )
 		{
-			sector_offset = 512 + ( g_si->sat[ sat_index ] * 512 );
+			sector_offset = g_si->sect_size + ( g_si->sat[ sat_index ] * g_si->sect_size );
 		}
 
-		if ( total + 512 > dh.short_stream_length )
+		if ( total + g_si->sect_size > dh.stream_length )
 		{
-			bytes_to_read = dh.short_stream_length - total;
+			bytes_to_read = dh.stream_length - total;
 		}
 
 		ReadFile( hFile, g_si->short_stream_container + total, bytes_to_read, &read, NULL );
@@ -1005,7 +1218,8 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 {
 	DWORD read = 0;
 	long sat_index = g_si->first_dir_sect;
-	unsigned long sector_offset = 512 + ( sat_index * 512 );
+	unsigned long sector_offset = g_si->sect_size + ( sat_index * g_si->sect_size );
+	unsigned long sector_count = 0;
 
 	bool root_found = false;
 	directory_header root_dh = { 0 };
@@ -1020,8 +1234,8 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 
 	int item_count = SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 ); // We don't need to call this for each item.
 
-	// Save each directory sector from the SAT. The number of sectors is unknown.
-	while ( true )
+	// Save each directory sector from the SAT. The number of directory list sectors is not known for Version 3 databases.
+	while ( sector_count < ( g_si->num_sat_sects * ( g_si->sect_size / sizeof( long ) ) ) )
 	{
 		// Stop processing and exit the thread.
 		if ( kill_thread == true )
@@ -1059,7 +1273,7 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 		}
 		
 		// Each index should be no greater than the size of the SAT array.
-		if ( sat_index > ( long )( g_si->num_sat_sects * 128 ) )
+		if ( sat_index > ( long )( g_si->num_sat_sects * ( g_si->sect_size / sizeof( long ) ) ) )
 		{
 			MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
 			exit_build = true;
@@ -1070,11 +1284,11 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 
 		if ( exit_build == false )
 		{
-			sector_offset = 512 + ( g_si->sat[ sat_index ] * 512 );
+			sector_offset = g_si->sect_size + ( g_si->sat[ sat_index ] * g_si->sect_size );
 		}
 
 		// There are 4 directory items per 512 byte sector.
-		for ( int i = 0; i < 4; i++ )
+		for ( int i = 0; i < ( g_si->sect_size / 128 ); i++ )
 		{
 			// Stop processing and exit the thread.
 			if ( kill_thread == true )
@@ -1122,10 +1336,10 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 			// dh.create_time never seems to be set.
 			fileinfo *fi = ( fileinfo * )malloc( sizeof( fileinfo ) );
 			fi->filename = ( wchar_t * )malloc( sizeof( wchar_t ) * 32 );
-			wcscpy_s( fi->filename, 32, dh.sid );
+			wcsncpy_s( fi->filename, 32, dh.sid, 31 );
 			memcpy_s( &fi->date_modified, sizeof( __int64 ), dh.modify_time, 8 );
-			fi->offset = dh.first_short_stream_sect;
-			fi->size = dh.short_stream_length;
+			fi->offset = dh.first_stream_sect;
+			fi->size = dh.stream_length;
 			fi->entry_type = dh.entry_type;
 			fi->extension = 0;		// None set.
 			fi->si = g_si;
@@ -1161,6 +1375,7 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 
 		// Each index points to the next index.
 		sat_index = g_si->sat[ sat_index ];
+		++sector_count;	// Update the number of sectors we've traversed.
 	}
 
 	if ( g_fi != NULL )
@@ -1172,7 +1387,7 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 
 		if ( catalog_found == true )
 		{
-			update_catalog_entries( hFile, g_fi, catalog_dh, g_si );
+			update_catalog_entries( hFile, g_fi, catalog_dh );
 		}
 	}
 	else	// Free our shared info structure if no item was added to the list.
@@ -1191,7 +1406,7 @@ char build_ssat( HANDLE hFile, shared_info *g_si )
 {
 	DWORD read = 0, total = 0;
 	long sat_index = g_si->first_ssat_sect;
-	unsigned long sector_offset = 512 + ( sat_index * 512 );
+	unsigned long sector_offset = g_si->sect_size + ( sat_index * g_si->sect_size );
 
 	bool exit_build = false;
 
@@ -1219,7 +1434,7 @@ char build_ssat( HANDLE hFile, shared_info *g_si )
 		}
 		
 		// Each index should be no greater than the size of the SAT array.
-		if ( sat_index > ( long )( g_si->num_sat_sects * 128 ) )
+		if ( sat_index > ( long )( g_si->num_sat_sects * ( g_si->sect_size / sizeof( long ) ) ) )
 		{
 			MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
 			exit_build = true;
@@ -1230,13 +1445,13 @@ char build_ssat( HANDLE hFile, shared_info *g_si )
 
 		if ( exit_build == false )
 		{
-			sector_offset = 512 + ( g_si->sat[ sat_index ] * 512 );
+			sector_offset = g_si->sect_size + ( g_si->sat[ sat_index ] * g_si->sect_size );
 		}
 
-		ReadFile( hFile, g_si->ssat + ( total / sizeof( long ) ), 512, &read, NULL );
+		ReadFile( hFile, g_si->ssat + ( total / sizeof( long ) ), g_si->sect_size, &read, NULL );
 		total += read;
 
-		if ( read < 512 )
+		if ( read < g_si->sect_size )
 		{
 			MessageBox( g_hWnd_main, L"Premature end of file encountered while building the Short SAT.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
 			return SC_FAIL;
@@ -1284,13 +1499,13 @@ char build_sat( HANDLE hFile, shared_info *g_si )
 		}
 
 		// Adjust the file pointer to the SAT
-		sector_offset = 512 + ( g_msat[ msat_index ] * 512 );
+		sector_offset = g_si->sect_size + ( g_msat[ msat_index ] * g_si->sect_size );
 		SetFilePointer( hFile, sector_offset, 0, FILE_BEGIN );
 
-		ReadFile( hFile, g_si->sat + ( total / sizeof( long ) ), 512, &read, NULL );
+		ReadFile( hFile, g_si->sat + ( total / sizeof( long ) ), g_si->sect_size, &read, NULL );
 		total += read;
 
-		if ( read < 512 )
+		if ( read < g_si->sect_size )
 		{
 			MessageBox( g_hWnd_main, L"Premature end of file encountered while building the SAT.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
 			return SC_FAIL;
@@ -1304,8 +1519,8 @@ char build_sat( HANDLE hFile, shared_info *g_si )
 // This is only used to build the SAT and nothing more.
 char build_msat( HANDLE hFile, shared_info *g_si )
 {
-	DWORD read = 0, total = 436;
-	unsigned long last_sector = 512 + ( g_si->first_dis_sect * 512 );	// Offset to the next DISAT (double indirect sector allocation table)
+	DWORD read = 0, total = 436;	// If the sector size is 4096 bytes, then the remaining 3585 bytes are filled with 0.
+	unsigned long last_sector = g_si->sect_size + ( g_si->first_dis_sect * g_si->sect_size );	// Offset to the next DISAT (double indirect sector allocation table)
 
 	g_msat = ( long * )malloc( msat_size );	// g_msat is freed in our read database function.
 	memset( g_msat, -1, msat_size );
@@ -1313,7 +1528,7 @@ char build_msat( HANDLE hFile, shared_info *g_si )
 	// Set the file pionter to the beginning of the master sector allocation table.
 	SetFilePointer( hFile, 76, 0, FILE_BEGIN );
 
-	// The first MSAT (contained within the 512 byte header) is 436 bytes. Every other MSAT will be 512 bytes.
+	// The first MSAT (contained within the 512 byte header) is 436 bytes. Every other MSAT will be 512 or 4096 bytes.
 	ReadFile( hFile, g_msat, 436, &read, NULL );
 
 	if ( read < 436 )
@@ -1335,11 +1550,11 @@ char build_msat( HANDLE hFile, shared_info *g_si )
 
 		SetFilePointer( hFile, last_sector, 0, FILE_BEGIN );
 
-		// Read the first 127 SAT sectors (508 bytes) in the DISAT.
-		ReadFile( hFile, g_msat + ( total / sizeof( long ) ), 508, &read, NULL );
+		// Read the first 127 or 1023 SAT sectors (508 or 4092 bytes) in the DISAT.
+		ReadFile( hFile, g_msat + ( total / sizeof( long ) ), g_si->sect_size - sizeof( long ), &read, NULL );
 		total += read;
 
-		if ( read < 508 )
+		if ( read < g_si->sect_size - sizeof( long ) )
 		{
 			MessageBox( g_hWnd_main, L"Premature end of file encountered while building the Master SAT.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
 			return SC_FAIL;
@@ -1355,7 +1570,7 @@ char build_msat( HANDLE hFile, shared_info *g_si )
 		}
 
 		// The last index in the DISAT contains a pointer to the next DISAT. That's assuming there's any more DISATs left.
-		last_sector = 512 + ( last_sector * 512 );
+		last_sector = g_si->sect_size + ( last_sector * g_si->sect_size );
 	}
 
 	return SC_OK;
@@ -1455,9 +1670,12 @@ unsigned __stdcall read_database( void *pArguments )
 				continue;
 			}
 
-			msat_size = sizeof( long ) * ( 109 + ( ( dh.num_dis_sects > 0 ? dh.num_dis_sects : 0 ) * 127 ) );
-			sat_size = ( dh.num_sat_sects > 0 ? dh.num_sat_sects : 0 ) * 512;
-			ssat_size = ( dh.num_ssat_sects > 0 ? dh.num_ssat_sects : 0 ) * 512;
+			// The sector size is equivalent to the 2 to the power of sector_shift. Version 3 = 2^9 = 512. Version 4 = 2^12 = 4096. We'll default to 512 if it's not version 4.
+			unsigned short sect_size = ( dh.dll_version == 0x0004 && dh.sector_shift == 0x000C ? 4096 : 512 );
+
+			msat_size = sizeof( long ) * ( 109 + ( ( dh.num_dis_sects > 0 ? dh.num_dis_sects : 0 ) * ( ( sect_size / sizeof( long ) ) - 1 ) ) );
+			sat_size = ( dh.num_sat_sects > 0 ? dh.num_sat_sects : 0 ) * sect_size;
+			ssat_size = ( dh.num_ssat_sects > 0 ? dh.num_ssat_sects : 0 ) * sect_size;
 
 			GetFileSizeEx( hFile, &f_size );
 
@@ -1478,6 +1696,7 @@ unsigned __stdcall read_database( void *pArguments )
 			si->ssat = NULL;
 			si->short_stream_container = NULL;
 			si->count = 0;
+			si->sect_size = sect_size;
 			si->first_dir_sect = dh.first_dir_sect;
 			si->first_dis_sect = dh.first_dis_sect;
 			si->first_ssat_sect = dh.first_ssat_sect;
