@@ -376,7 +376,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 			SendMessage( g_hWnd_list, LVM_INSERTCOLUMN, 3, ( LPARAM )&lvc );
 
 			lvc.fmt = LVCFMT_LEFT;
-			lvc.pszText = L"Date Modified";
+			lvc.pszText = L"Date Modified (UTC)";
 			lvc.cx = 140;
 			SendMessage( g_hWnd_list, LVM_INSERTCOLUMN, 4, ( LPARAM )&lvc );
 
@@ -770,7 +770,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 						LVCOLUMN lvc = { NULL };
 						lvc.mask = LVCF_FMT;
 						SendMessage( g_hWnd_list, LVM_GETCOLUMN, ( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )&lvc );
-						
+
 						if ( HDF_SORTUP & lvc.fmt )	// Column is sorted upward.
 						{
 							// Sort down
@@ -851,7 +851,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					{
 						break;
 					}
-					
+
 					// Retrieve the lParam value from the selected listview item.
 					LVITEM lvi = { NULL };
 					lvi.mask = LVIF_PARAM;
@@ -869,8 +869,33 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 						gdi_image = NULL;
 					}
 
-					// Create our image from an image stream (memory) and convert it to RGB if it's in CMYK format.
-					gdi_image = create_image( current_image + header_offset, size, ( ( ( fileinfo * )lvi.lParam )->extension == 3 ? true : false ) );
+					unsigned char format = ( ( ( fileinfo * )lvi.lParam )->extension == 3 ? 1 : 0 );	// 0 = default, 1 = cmyk, 2 = raw (flipped), 3 = raw
+
+					unsigned int raw_width = 0;
+					unsigned int raw_height = 0;
+					unsigned int raw_size = 0;
+					int raw_stride = 0;
+					if ( ( ( fileinfo * )lvi.lParam )->extension == 4 )
+					{
+						if ( header_offset == 0x18 )
+						{
+							memcpy_s( &raw_stride, sizeof( int ), current_image + ( header_offset - ( sizeof( unsigned int ) * 4 ) ), sizeof( int ) );
+							memcpy_s( &raw_width, sizeof( unsigned int ), current_image + ( header_offset - ( sizeof( unsigned int ) * 3 ) ), sizeof( unsigned int ) );
+							memcpy_s( &raw_height, sizeof( unsigned int ), current_image + ( header_offset - ( sizeof( unsigned int ) * 2 ) ), sizeof( unsigned int ) );
+							format = 2;
+						}
+						else if ( header_offset == 0x34 )	// Found in TVThumb.db (Version 4 databases)
+						{
+							memcpy_s( &raw_width, sizeof( unsigned int ), current_image + sizeof( unsigned int ), sizeof( unsigned int ) );
+							memcpy_s( &raw_height, sizeof( unsigned int ), current_image + ( sizeof( unsigned int ) * 2 ), sizeof( unsigned int ) );
+							memcpy_s( &raw_stride, sizeof( int ), current_image + ( sizeof( unsigned int ) * 3 ), sizeof( int ) );
+							format = 3;
+						}
+						memcpy_s( &raw_size, sizeof( unsigned int ), current_image + ( header_offset - sizeof( unsigned int ) ), sizeof( unsigned int ) );
+					}
+
+					// Create our image from an image stream (memory) and convert it to RGB if it's in CMYK format, or reconstruct any raw images.
+					gdi_image = create_image( current_image + header_offset, size, format, raw_width, raw_height, raw_size, raw_stride );
 
 					// Free our image buffer.
 					free( current_image );
@@ -940,7 +965,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 				case LVN_BEGINLABELEDIT:
 				{
 					NMLVDISPINFO *pdi = ( NMLVDISPINFO * )lParam;
-					
+
 					// If no item is being edited, then cancel the edit.
 					if ( pdi->item.iItem == -1 )
 					{
@@ -956,12 +981,12 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 					// Save our current fileinfo.
 					current_fileinfo = ( fileinfo * )lvi.lParam;
-					
+
 					// Get the bounding box of the Filename column we're editing.
 					current_edit_pos.top = 1;
 					current_edit_pos.left = LVIR_BOUNDS;
 					SendMessage( g_hWnd_list, LVM_GETSUBITEMRECT, pdi->item.iItem, ( LPARAM )&current_edit_pos );
-					
+
 					// Get the edit control that the listview creates.
 					g_hWnd_edit = ( HWND )SendMessage( g_hWnd_list, LVM_GETEDITCONTROL, 0, 0 );
 
@@ -1027,7 +1052,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 		case WM_DRAWITEM:
 		{
 			DRAWITEMSTRUCT *dis = ( DRAWITEMSTRUCT * )lParam;
-      
+
 			// The item we want to draw is our listview.
 			if ( dis->CtlType == ODT_LISTVIEW )
 			{
@@ -1183,7 +1208,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					last_rc.left = 5 + last_left;
 					last_rc.right = lvc.cx + last_left - 5;
 					last_rc.top += 2;
-					
+
 					// Save the height and width of this region.
 					int width = last_rc.right - last_rc.left;
 					int height = last_rc.bottom - last_rc.top;

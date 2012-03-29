@@ -68,7 +68,7 @@ struct database_header
 	unsigned short short_sect_shift;
 	unsigned short reserved_1;
 	unsigned long reserved_2;
-	unsigned long reserved_3;
+	unsigned long num_dir_sects;	// Not supported in Version 3 databases.
 	unsigned long num_sat_sects;
 	long first_dir_sect;
 	unsigned long transactioning_sig;
@@ -85,8 +85,8 @@ struct directory_header
 	unsigned short sid_length;
 	char entry_type;			// 0 = Invalid, 1 = Storage, 2 = Stream, 3 = Lock bytes, 4 = Property, 5 = Root
 	char node_color;			// 0 = Red, 1 = Black
-	unsigned long left_child;
-	unsigned long right_child;
+	long left_child;
+	long right_child;
 	long dir_id;
 	char clsid[ 16 ];
 	unsigned long user_flags;
@@ -94,9 +94,9 @@ struct directory_header
 	char create_time[ 8 ];
 	char modify_time[ 8 ];
 
-	long first_short_stream_sect;
-	unsigned long short_stream_length;
-	unsigned long prop_type;
+	long first_stream_sect;
+	unsigned long stream_length;		// Low order bits. Should be less than or equal to 0x80000000 for Version 3 databases.
+	unsigned long stream_length_high;	// High order bits.
 };
 
 // Holds shared variables among database entries.
@@ -110,6 +110,7 @@ struct shared_info
 	char *short_stream_container;
 	
 	//These are found in the database header.
+	unsigned short sect_size;
 	unsigned long num_sat_sects;
 	long first_dir_sect;
 	long first_ssat_sect;
@@ -160,7 +161,7 @@ unsigned __stdcall read_database( void *pArguments );
 unsigned __stdcall remove_items( void *pArguments );
 unsigned __stdcall save_items( void *pArguments );
 char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset );
-Gdiplus::Image *create_image( char *buffer, unsigned long size, bool is_cmyk );
+Gdiplus::Image *create_image( char *buffer, unsigned long size, unsigned char format, unsigned int raw_width = 0, unsigned int raw_height = 0, unsigned int raw_size = 0, int raw_stride = 0 );
 bool is_close( int a, int b );
 void update_menus( bool disable_all );
 
