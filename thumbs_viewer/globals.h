@@ -1,6 +1,6 @@
 /*
     thumbs_viewer will extract thumbnail images from thumbs database files.
-    Copyright (C) 2011-2012 Eric Kutcher
+    Copyright (C) 2011-2013 Eric Kutcher
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -52,7 +52,7 @@
 #define MENU_SELECT_ALL	1006
 #define MENU_REMOVE_SEL	1007
 
-#define SNAP_WIDTH		10;		// The minimum distance at which our windows will attach together.
+#define SNAP_WIDTH		10		// The minimum distance at which our windows will attach together.
 
 #define WM_DESTROY_ALT		WM_APP		// Allows non-window threads to call DestroyWindow.
 #define WM_CHANGE_CURSOR	WM_APP + 1	// Updates the window cursor.
@@ -141,11 +141,13 @@ struct pathinfo
 {
 	wchar_t *filepath;			// Path to the file/folder
 	unsigned short offset;		// Offset to the first file.
+	wchar_t *output_path;		// If the user wants to save files.
 };
 
 // Save To structure.
 struct save_param
 {
+	wchar_t *filepath;		// Save directory.
 	LPITEMIDLIST lpiidl;	// BrowseForFolder variable when saving files.
 	bool save_all;			// Save All = true, Save Selected = false.
 };
@@ -170,7 +172,6 @@ void update_menus( bool disable_all );
 // Object handles.
 extern HWND g_hWnd_main;			// Handle to our main window.
 extern HWND g_hWnd_image;			// Handle to our image window.
-extern HWND g_hWnd_prompt;			// Handle to our prompt window.
 extern HWND g_hWnd_list;			// Handle to the listview control.
 
 extern CRITICAL_SECTION pe_cs;		// Allow only one read_database thread to be active.
@@ -188,6 +189,8 @@ extern RECT last_dim;				// Keeps track of the image window's dimension before i
 
 extern bool is_attached;			// Toggled when our windows are attached
 extern bool skip_main;				// Prevents the main window from moving the image window if it is about to attach.
+
+extern char cmd_line;				// Show the main window and message prompts.
 
 // Image variables
 extern Gdiplus::Image *gdi_image;	// GDI+ image object. We need it to handle .png and .jpg images specifically.

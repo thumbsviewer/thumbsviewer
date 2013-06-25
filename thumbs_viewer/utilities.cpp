@@ -1,6 +1,6 @@
 /*
     thumbs_viewer will extract thumbnail images from thumbs database files.
-    Copyright (C) 2011-2012 Eric Kutcher
+    Copyright (C) 2011-2013 Eric Kutcher
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -443,9 +443,16 @@ unsigned __stdcall save_items( void *pArguments )
 	save_param *save_type = ( save_param * )pArguments;
 
 	wchar_t save_directory[ MAX_PATH ] = { 0 };
-	// Get the directory path from the id list.
-	SHGetPathFromIDList( save_type->lpiidl, save_directory );
-	CoTaskMemFree( save_type->lpiidl );
+	if ( save_type->lpiidl != NULL )
+	{
+		// Get the directory path from the id list.
+		SHGetPathFromIDList( save_type->lpiidl, save_directory );
+		CoTaskMemFree( save_type->lpiidl );
+	}
+	else if ( save_type->filepath != NULL )
+	{
+		wcsncpy_s( save_directory, MAX_PATH, save_type->filepath, MAX_PATH - 1 );
+	}
 	
 	// Depending on what was selected, get the number of items we'll be saving.
 	int save_items = ( save_type->save_all == true ? SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 ) : SendMessage( g_hWnd_list, LVM_GETSELECTEDCOUNT, 0, 0 ) );
@@ -537,7 +544,7 @@ unsigned __stdcall save_items( void *pArguments )
 			// Switch the encoder to PNG or BMP to save a lossless image.
 			if ( save_bm_image->Save( fullpath, &jpgClsid, &encoderParameters ) != Gdiplus::Ok )
 			{
-				MessageBox( g_hWnd_main, L"An error occurred while converting the image to save.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+				if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"An error occurred while converting the image to save.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 			}
 
 			delete save_bm_image;
@@ -585,7 +592,7 @@ unsigned __stdcall save_items( void *pArguments )
 				// The size will differ from what's listed in the database since we had to reconstruct the image.
 				if ( save_bm_image->Save( fullpath, &pngClsid, &encoderParameters ) != Gdiplus::Ok )
 				{
-					MessageBox( g_hWnd_main, L"An error occurred while converting the image to save.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+					if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"An error occurred while converting the image to save.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 				}
 
 				delete save_bm_image;
@@ -606,7 +613,7 @@ unsigned __stdcall save_items( void *pArguments )
 				// See if the path was too long.
 				if ( GetLastError() == ERROR_PATH_NOT_FOUND )
 				{
-					MessageBox( g_hWnd_main, L"One or more files could not be saved. Please check the filename and path.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+					if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"One or more files could not be saved. Please check the filename and path.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 				}
 			}
 		}
@@ -614,6 +621,7 @@ unsigned __stdcall save_items( void *pArguments )
 		free( save_image );
 	}
 
+	free( save_type->filepath );
 	free( save_type );
 
 	update_menus( false );									// Enable the appropriate menu items.
@@ -626,6 +634,11 @@ unsigned __stdcall save_items( void *pArguments )
 	if ( shutdown_mutex != NULL )
 	{
 		ReleaseSemaphore( shutdown_mutex, 1, NULL );
+	}
+	else if ( cmd_line == 2 )	// Exit the program if we're done saving.
+	{
+		// DestroyWindow won't work on a window from a different thread. So we'll send a message to trigger it.
+		SendMessage( g_hWnd_main, WM_DESTROY_ALT, 0, 0 );
 	}
 
 	in_thread = false;
@@ -669,14 +682,14 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 				// The Short SAT should terminate with -2, but we shouldn't get here before the for loop completes.
 				if ( sat_index < 0 )
 				{
-					MessageBox( g_hWnd_main, L"Invalid SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+					if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"Invalid SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 					break;
 				}
 				
 				// Each index should be no greater than the size of the SAT array.
 				if ( sat_index > ( long )( fi->si->num_sat_sects * ( fi->si->sect_size / sizeof( long ) ) ) )
 				{
-					MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+					if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 					exit_extract = true;
 				}
 
@@ -698,7 +711,7 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 
 				if ( read < bytes_to_read )
 				{
-					MessageBox( g_hWnd_main, L"Premature end of file encountered while extracting the file.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+					if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"Premature end of file encountered while extracting the file.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 					break;
 				}
 
@@ -778,14 +791,14 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 				// The Short SAT should terminate with -2, but we shouldn't get here before the for loop completes.
 				if ( ssat_index < 0 )
 				{
-					MessageBox( g_hWnd_main, L"Invalid Short SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+					if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"Invalid Short SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 					break;
 				}
 				
 				// Each index should be no greater than the size of the Short SAT array.
 				if ( ssat_index > ( long )( fi->si->num_ssat_sects * ( fi->si->sect_size / sizeof( long ) ) ) )
 				{
-					MessageBox( g_hWnd_main, L"Short SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+					if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"Short SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 					break;
 				}
 
@@ -906,14 +919,14 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh )
 			// The SAT should terminate with -2, but we shouldn't get here before the for loop completes.
 			if ( sat_index < 0 )
 			{
-				MessageBox( g_hWnd_main, L"Invalid SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+				if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"Invalid SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 				break;
 			}
 			
 			// Each index should be no greater than the size of the SAT array.
 			if ( sat_index > ( long )( fi->si->num_sat_sects * ( fi->si->sect_size / sizeof( long ) ) ) )
 			{
-				MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+				if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 				exit_update = true;
 			}
 
@@ -935,7 +948,7 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh )
 
 			if ( read < bytes_to_read )
 			{
-				MessageBox( g_hWnd_main, L"Premature end of file encountered while updating the directory.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+				if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"Premature end of file encountered while updating the directory.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 				break;
 			}
 
@@ -969,14 +982,14 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh )
 			// The Short SAT should terminate with -2, but we shouldn't get here before the for loop completes.
 			if ( ssat_index < 0 )
 			{
-				MessageBox( g_hWnd_main, L"Invalid Short SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+				if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"Invalid Short SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 				break;
 			}
 			
 			// Each index should be no greater than the size of the Short SAT array.
 			if ( ssat_index > ( long )( fi->si->num_ssat_sects * ( fi->si->sect_size / sizeof( long ) ) ) )
 			{
-				MessageBox( g_hWnd_main, L"Short SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+				if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"Short SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 				break;
 			}
 
@@ -1052,7 +1065,7 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh )
 			if ( name_length > dh.stream_length )
 			{
 				free( buf );
-				MessageBox( g_hWnd_main, L"Invalid directory entry.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+				if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"Invalid directory entry.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 				return SC_FAIL;
 			}
 
@@ -1166,14 +1179,14 @@ char cache_short_stream_container( HANDLE hFile, directory_header dh, shared_inf
 		// The SAT should terminate with -2, but we shouldn't get here before the for loop completes.
 		if ( sat_index < 0 )
 		{
-			MessageBox( g_hWnd_main, L"Invalid SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+			if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"Invalid SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 			return SC_FAIL;
 		}
 		
 		// Each index should be no greater than the size of the SAT array.
 		if ( sat_index > ( long )( g_si->num_sat_sects * ( g_si->sect_size / sizeof( long ) ) ) )
 		{
-			MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+			if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 			exit_cache = true;
 		}
 
@@ -1196,7 +1209,7 @@ char cache_short_stream_container( HANDLE hFile, directory_header dh, shared_inf
 
 		if ( read < bytes_to_read )
 		{
-			MessageBox( g_hWnd_main, L"Premature end of file encountered while building the short stream container.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+			if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"Premature end of file encountered while building the short stream container.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 			return SC_FAIL;
 		}
 
@@ -1261,12 +1274,12 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 				}
 				else
 				{
-					MessageBox( g_hWnd_main, L"No entries were found.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+					if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"No entries were found.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 				}
 			}
 			else
 			{
-				MessageBox( g_hWnd_main, L"Invalid SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+				if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"Invalid SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 			}
 
 			break;
@@ -1275,7 +1288,7 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 		// Each index should be no greater than the size of the SAT array.
 		if ( sat_index > ( long )( g_si->num_sat_sects * ( g_si->sect_size / sizeof( long ) ) ) )
 		{
-			MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+			if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 			exit_build = true;
 		}
 
@@ -1308,7 +1321,7 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 
 			if ( read < sizeof( directory_header ) )
 			{
-				MessageBox( g_hWnd_main, L"Premature end of file encountered while building the directory.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+				if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"Premature end of file encountered while building the directory.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 				exit_build = true;
 				break;
 			}
@@ -1429,14 +1442,14 @@ char build_ssat( HANDLE hFile, shared_info *g_si )
 		// The Short SAT should terminate with -2, but we shouldn't get here before the for loop completes.
 		if ( sat_index < 0 )
 		{
-			MessageBox( g_hWnd_main, L"Invalid SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+			if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"Invalid SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 			return SC_FAIL;
 		}
 		
 		// Each index should be no greater than the size of the SAT array.
 		if ( sat_index > ( long )( g_si->num_sat_sects * ( g_si->sect_size / sizeof( long ) ) ) )
 		{
-			MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+			if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"SAT index out of bounds.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 			exit_build = true;
 		}
 
@@ -1453,7 +1466,7 @@ char build_ssat( HANDLE hFile, shared_info *g_si )
 
 		if ( read < g_si->sect_size )
 		{
-			MessageBox( g_hWnd_main, L"Premature end of file encountered while building the Short SAT.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+			if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"Premature end of file encountered while building the Short SAT.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 			return SC_FAIL;
 		}
 
@@ -1494,7 +1507,7 @@ char build_sat( HANDLE hFile, shared_info *g_si )
 		// We shouldn't get here before the for loop completes.
 		if ( g_msat[ msat_index ] < 0 )
 		{
-			MessageBox( g_hWnd_main, L"Invalid Master SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+			if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"Invalid Master SAT termination index.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 			return SC_FAIL;
 		}
 
@@ -1507,7 +1520,7 @@ char build_sat( HANDLE hFile, shared_info *g_si )
 
 		if ( read < g_si->sect_size )
 		{
-			MessageBox( g_hWnd_main, L"Premature end of file encountered while building the SAT.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+			if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"Premature end of file encountered while building the SAT.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 			return SC_FAIL;
 		}
 	}
@@ -1533,7 +1546,7 @@ char build_msat( HANDLE hFile, shared_info *g_si )
 
 	if ( read < 436 )
 	{
-		MessageBox( g_hWnd_main, L"Premature end of file encountered while building the Master SAT.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+		if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"Premature end of file encountered while building the Master SAT.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 		return SC_FAIL;
 	}
 
@@ -1556,7 +1569,7 @@ char build_msat( HANDLE hFile, shared_info *g_si )
 
 		if ( read < g_si->sect_size - sizeof( long ) )
 		{
-			MessageBox( g_hWnd_main, L"Premature end of file encountered while building the Master SAT.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+			if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"Premature end of file encountered while building the Master SAT.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 			return SC_FAIL;
 		}
 
@@ -1565,7 +1578,7 @@ char build_msat( HANDLE hFile, shared_info *g_si )
 
 		if ( read < 4 )
 		{
-			MessageBox( g_hWnd_main, L"Premature end of file encountered while building the Master SAT.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+			if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"Premature end of file encountered while building the Master SAT.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 			return SC_FAIL;
 		}
 
@@ -1596,7 +1609,7 @@ unsigned __stdcall read_database( void *pArguments )
 
 	int filepath_length = wcslen( pi->filepath ) + 1;	// Include NULL character.
 	
-	bool construct_filepath = ( filepath_length > pi->offset ? false : true );
+	bool construct_filepath = ( filepath_length > pi->offset && cmd_line == 0 ? false : true );
 
 	wchar_t *filepath = NULL;
 
@@ -1612,10 +1625,18 @@ unsigned __stdcall read_database( void *pArguments )
 		// Construct the filepath for each file.
 		if ( construct_filepath == true )
 		{
-			fname_length = wcslen( fname ) + 1;	// Include '\' character
+			fname_length = wcslen( fname ) + 1;	// Include '\' character or NULL character
 
-			filepath = ( wchar_t * )malloc( sizeof( wchar_t ) * ( filepath_length + fname_length ) );
-			swprintf_s( filepath, filepath_length + fname_length, L"%s\\%s", pi->filepath, fname );
+			if ( cmd_line != 0 )
+			{
+				filepath = ( wchar_t * )malloc( sizeof( wchar_t ) * fname_length );
+				wcscpy_s( filepath, fname_length, fname );
+			}
+			else
+			{
+				filepath = ( wchar_t * )malloc( sizeof( wchar_t ) * ( filepath_length + fname_length ) );
+				swprintf_s( filepath, filepath_length + fname_length, L"%s\\%s", pi->filepath, fname );
+			}
 
 			// Move to the next file name.
 			fname += fname_length;
@@ -1643,7 +1664,7 @@ unsigned __stdcall read_database( void *pArguments )
 				CloseHandle( hFile );
 				free( filepath );
 
-				MessageBox( g_hWnd_main, L"Premature end of file encountered while reading the header.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+				if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"Premature end of file encountered while reading the header.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 
 				continue;
 			}
@@ -1654,7 +1675,7 @@ unsigned __stdcall read_database( void *pArguments )
 				CloseHandle( hFile );
 				free( filepath );
 
-				MessageBox( g_hWnd_main, L"The file is not a thumbs database.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+				if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"The file is not a thumbs database.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 
 				continue;
 			}
@@ -1665,7 +1686,7 @@ unsigned __stdcall read_database( void *pArguments )
 				CloseHandle( hFile );
 				free( filepath );
 
-				MessageBox( g_hWnd_main, L"The total sector allocation table size is too large.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+				if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"The total sector allocation table size is too large.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 
 				continue;
 			}
@@ -1685,7 +1706,7 @@ unsigned __stdcall read_database( void *pArguments )
 				CloseHandle( hFile );
 				free( filepath );
 
-				MessageBox( g_hWnd_main, L"The total sector allocation table size exceeds the size of the database.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+				if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"The total sector allocation table size exceeds the size of the database.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 
 				continue;
 			}
@@ -1719,13 +1740,35 @@ unsigned __stdcall read_database( void *pArguments )
 		else
 		{
 			// If this occurs, then there's something wrong with the user's system.
-			MessageBox( g_hWnd_main, L"The database file failed to open.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+			if ( cmd_line != 2 ){ MessageBox( g_hWnd_main, L"The database file failed to open.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING ); }
 		}
 
 		// Free the old filepath.
 		free( filepath );
 	}
 	while ( construct_filepath == true && *fname != L'\0' );
+
+	// Save the files if the user specified an output directory through the command-line.
+	if ( pi->output_path != NULL )
+	{
+		wchar_t output_path[ MAX_PATH ] = { 0 };
+		// Create and set the directory that we'll be outputting files to.
+		if ( GetFileAttributes( pi->output_path ) == INVALID_FILE_ATTRIBUTES )
+		{
+			CreateDirectory( pi->output_path, NULL );
+		}
+
+		SetCurrentDirectory( pi->output_path );			// Set the path (relative or full)
+		GetCurrentDirectory( MAX_PATH, output_path );	// Get the full path
+
+		save_param *save_type = ( save_param * )malloc( sizeof( save_param ) );	// Freed in the save_items thread.
+		save_type->filepath = _wcsdup( output_path );
+		save_type->lpiidl = NULL;
+		save_type->save_all = true;
+		CloseHandle( ( HANDLE )_beginthreadex( NULL, 0, &save_items, ( void * )save_type, 0, NULL ) );
+
+		free( pi->output_path );
+	}
 
 	// Free the path info.
 	free( pi->filepath );
