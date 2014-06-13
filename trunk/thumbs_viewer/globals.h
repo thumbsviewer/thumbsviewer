@@ -37,6 +37,8 @@
 #include <gdiplus.h>
 #include <process.h>
 
+#include "rbt.h"
+
 #include "resource.h"
 
 #define PROGRAM_CAPTION L"Thumbs Viewer"
@@ -47,13 +49,16 @@
 #define MENU_OPEN		1001
 #define MENU_SAVE_ALL	1002
 #define MENU_SAVE_SEL	1003
-#define MENU_EXIT		1004
-#define MENU_ABOUT		1005
-#define MENU_SELECT_ALL	1006
-#define MENU_REMOVE_SEL	1007
+#define MENU_EXPORT		1004
+#define MENU_EXIT		1005
+#define MENU_ABOUT		1006
+#define MENU_SELECT_ALL	1007
+#define MENU_REMOVE_SEL	1008
+#define MENU_SCAN		1009
 
 #define SNAP_WIDTH		10		// The minimum distance at which our windows will attach together.
 
+#define WM_PROPAGATE		WM_APP		// Updates the scan window.
 #define WM_DESTROY_ALT		WM_APP		// Allows non-window threads to call DestroyWindow.
 #define WM_CHANGE_CURSOR	WM_APP + 1	// Updates the window cursor.
 
@@ -103,14 +108,11 @@ struct directory_header
 struct shared_info
 {
 	wchar_t dbpath[ MAX_PATH ];
-	unsigned char system;		// 0 = Unknown, 1 = Me/2000, 2 = XP/2003, 3 = Vista/2008/7
-	unsigned short version;
 	long *sat;
 	long *ssat;
 	char *short_stream_container;
 	
 	//These are found in the database header.
-	unsigned short sect_size;
 	unsigned long num_sat_sects;
 	long first_dir_sect;
 	long first_ssat_sect;
@@ -120,28 +122,34 @@ struct shared_info
 	unsigned long short_sect_cutoff;
 
 	unsigned long count;		// Number of directory entries.
+
+	unsigned short sect_size;
+	unsigned short version;
+	unsigned char system;		// 0 = Unknown, 1 = Me/2000, 2 = XP/2003, 3 = Vista/2008/7
 };
 
 // This structure holds information obtained as we read the database. It's passed as an lParam to our listview items.
 struct fileinfo
 {
+	long long entry_hash;				// Hashed filename for Vista and above.
+	long long date_modified;			// Modified FILETIME
+	shared_info *si;
+	fileinfo *next;						// Allows us to process catalog entries in order.
+	wchar_t *filename;					// Name of the database entry.
 	unsigned long offset;				// Offset in SAT or short stream container (depends on size of entry)
 	unsigned long size;					// Size of file.
-	char extension;						// 0 = none, 1/3 = jpg, 2 = png, 4 = unknown
-	wchar_t *filename;					// Name of the database entry.
-	long long date_modified;			// Data checksum
 	char entry_type;
-	shared_info *si;
-
-	fileinfo *next;						// Allows us to process catalog entries in order.
+	char extension;						// 0 = none, 1/3 = jpg, 2 = png, 4 = unknown
+	bool mapped;						// false = not mapped, true = mapped hash
 };
 
 // Multi-file open structure.
 struct pathinfo
 {
 	wchar_t *filepath;			// Path to the file/folder
-	unsigned short offset;		// Offset to the first file.
 	wchar_t *output_path;		// If the user wants to save files.
+	unsigned short offset;		// Offset to the first file.
+	unsigned char type;			// 0 = Save thumbnails, 1 = Save CSV.
 };
 
 // Save To structure.
@@ -158,10 +166,14 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 LRESULT CALLBACK ImageWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam );
 VOID CALLBACK TimerProc( HWND hWnd, UINT msg, UINT idTimer, DWORD dwTime );
 
+LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam );
+
 unsigned __stdcall cleanup( void *pArguments );
 unsigned __stdcall read_database( void *pArguments );
 unsigned __stdcall remove_items( void *pArguments );
+unsigned __stdcall save_csv( void *pArguments );
 unsigned __stdcall save_items( void *pArguments );
+unsigned __stdcall scan_files( void *pArguments );
 char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset );
 Gdiplus::Image *create_image( char *buffer, unsigned long size, unsigned char format, unsigned int raw_width = 0, unsigned int raw_height = 0, unsigned int raw_size = 0, int raw_stride = 0 );
 bool is_close( int a, int b );
@@ -172,7 +184,9 @@ void update_menus( bool disable_all );
 // Object handles.
 extern HWND g_hWnd_main;			// Handle to our main window.
 extern HWND g_hWnd_image;			// Handle to our image window.
+extern HWND g_hWnd_scan;			// Handle to our scan window.
 extern HWND g_hWnd_list;			// Handle to the listview control.
+extern HWND g_hWnd_active;			// Handle to the active window. Used to handle tab stops.
 
 extern CRITICAL_SECTION pe_cs;		// Allow only one read_database thread to be active.
 
@@ -183,6 +197,8 @@ extern HICON hIcon_png;				// Handle to the system's .png icon.
 
 extern HMENU g_hMenu;				// Handle to our menu bar.
 extern HMENU g_hMenuSub_context;	// Handle to our context menu.
+
+extern HCURSOR wait_cursor;			// Temporary cursor while processing entries.
 
 // Window variables
 extern RECT last_dim;				// Keeps track of the image window's dimension before it gets minimized.
@@ -200,8 +216,16 @@ extern POINT old_pos;				// The old position of gdi_image. Used to calculate the
 
 extern float scale;					// Scale of the image.
 
+// Scan variables
+extern wchar_t g_filepath[];		// Path to the files and folders to scan.
+extern wchar_t extension_filter[];	// A list of extensions to filter from a file scan.
+extern bool include_folders;		// Include folders in a file scan.
+extern bool show_details;			// Show details in the scan window.
+extern rbt_tree *fileinfo_tree;		// Red-black tree of fileinfo structures.
+
 // Thread variables
 extern bool kill_thread;			// Allow for a clean shutdown.
+extern bool kill_scan;				// Stop a file scan.
 
 extern bool in_thread;				// Flag to indicate that we're in a worker thread.
 extern bool skip_draw;				// Prevents WM_DRAWITEM from accessing listview items while we're removing them.
