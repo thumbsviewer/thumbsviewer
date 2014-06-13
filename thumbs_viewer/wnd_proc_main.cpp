@@ -71,8 +71,10 @@ void update_menus( bool disable_all )
 		EnableMenuItem( g_hMenu, MENU_OPEN, MF_DISABLED );
 		EnableMenuItem( g_hMenu, MENU_SAVE_ALL, MF_DISABLED );
 		EnableMenuItem( g_hMenu, MENU_SAVE_SEL, MF_DISABLED );
+		EnableMenuItem( g_hMenu, MENU_EXPORT, MF_DISABLED );
 		EnableMenuItem( g_hMenu, MENU_REMOVE_SEL, MF_DISABLED );
 		EnableMenuItem( g_hMenu, MENU_SELECT_ALL, MF_DISABLED );
+		EnableMenuItem( g_hMenu, MENU_SCAN, MF_DISABLED );
 		EnableMenuItem( g_hMenuSub_context, MENU_SAVE_SEL, MF_DISABLED );
 		EnableMenuItem( g_hMenuSub_context, MENU_REMOVE_SEL, MF_DISABLED );
 		EnableMenuItem( g_hMenuSub_context, MENU_SELECT_ALL, MF_DISABLED );
@@ -84,11 +86,15 @@ void update_menus( bool disable_all )
 
 		if ( item_count > 0 )
 		{
+			EnableMenuItem( g_hMenu, MENU_SCAN, MF_ENABLED );
 			EnableMenuItem( g_hMenu, MENU_SAVE_ALL, MF_ENABLED );
+			EnableMenuItem( g_hMenu, MENU_EXPORT, MF_ENABLED );
 		}
 		else
 		{
+			EnableMenuItem( g_hMenu, MENU_SCAN, MF_DISABLED );
 			EnableMenuItem( g_hMenu, MENU_SAVE_ALL, MF_DISABLED );
+			EnableMenuItem( g_hMenu, MENU_EXPORT, MF_DISABLED );
 		}
 
 		if ( sel_count > 0 )
@@ -127,101 +133,72 @@ int CALLBACK CompareFunc( LPARAM lParam1, LPARAM lParam2, LPARAM lParamSort )
 	fileinfo *fi1 = ( ( fileinfo * )lParam1 );
 	fileinfo *fi2 = ( ( fileinfo * )lParam2 );
 
+	unsigned char index = 0;
+
 	// We added NUM_COLUMNS to the lParamSort value in order to distinguish between items we want to sort up, and items we want to sort down.
 	// Saves us from having to pass some arbitrary struct pointer.
 	if ( lParamSort >= NUM_COLUMNS )	// Up
 	{
-		switch ( lParamSort % NUM_COLUMNS )
+		index = ( unsigned char )( lParamSort % NUM_COLUMNS );
+	}
+	else
+	{
+		index = ( unsigned char )lParamSort;
+
+		fi1 = ( ( fileinfo * )lParam2 );
+		fi2 = ( ( fileinfo * )lParam1 );
+	}
+
+	switch ( index )
+	{
+		case 1:
 		{
-			case 1:
-			{
-				return _wcsicmp( fi1->filename, fi2->filename );
-			}
-			break;
+			return _wcsicmp( fi1->filename, fi2->filename );
+		}
+		break;
 
-			case 2:
-			{
-				return ( fi1->size > fi2->size );
-			}
-			break;
+		case 2:
+		{
+			return ( fi1->size > fi2->size );
+		}
+		break;
 
-			case 3:
-			{
-				return ( fi1->offset > fi2->offset );
-			}
-			break;
+		case 3:
+		{
+			return ( fi1->offset > fi2->offset );
+		}
+		break;
 
-			case 4:
-			{
-				return ( fi1->date_modified > fi2->date_modified );
-			}
-			break;
+		case 4:
+		{
+			return ( fi1->date_modified > fi2->date_modified );
+		}
+		break;
 
-			case 5:
+		case 5:
+		{
+			if ( fi1->si->system == fi2->si->system )
 			{
 				return ( fi1->si->version > fi2->si->version );	// Based on our values for the system, this will be sorted by operating system age.
 			}
-			break;
-
-			case 6:
+			else
 			{
-				return _wcsicmp( fi1->si->dbpath, fi2->si->dbpath );
+				return ( fi1->si->system > fi2->si->system );	// Handles unknown versions and systems.
 			}
-			break;
-
-			default:
-			{
-				return 0;
-			}
-			break;
-		}	
-	}
-	else	// Down
-	{
-		switch ( lParamSort )
-		{
-			case 1:
-			{
-				return _wcsicmp( fi2->filename, fi1->filename );
-			}
-			break;
-
-			case 2:
-			{
-				return ( fi2->size > fi1->size );
-			}
-			break;
-
-			case 3:
-			{
-				return ( fi2->offset > fi1->offset );
-			}
-			break;
-
-			case 4:
-			{
-				return ( fi2->date_modified > fi1->date_modified );
-			}
-			break;
-
-			case 5:
-			{
-				return ( fi2->si->version > fi1->si->version ); // Based on our values for the system, this will be sorted by operating system age.
-			}
-			break;
-
-			case 6:
-			{
-				return _wcsicmp( fi2->si->dbpath, fi1->si->dbpath );
-			}
-			break;
-
-			default:
-			{
-				return 0;
-			}
-			break;
 		}
+		break;
+
+		case 6:
+		{
+			return _wcsicmp( fi1->si->dbpath, fi2->si->dbpath );
+		}
+		break;
+
+		default:
+		{
+			return 0;
+		}
+		break;
 	}
 }
 
@@ -235,6 +212,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 			g_hMenu = CreateMenu();
 			HMENU hMenuSub_file = CreatePopupMenu();
 			HMENU hMenuSub_edit = CreatePopupMenu();
+			HMENU hMenuSub_tools = CreatePopupMenu();
 			HMENU hMenuSub_help = CreatePopupMenu();
 			g_hMenuSub_context = CreatePopupMenu();
 
@@ -266,11 +244,20 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 			InsertMenuItem( hMenuSub_file, 4, TRUE, &mii );
 
 			mii.fType = MFT_STRING;
+			mii.dwTypeData = L"Export to CSV...\tCtrl+E";
+			mii.cch = 23;
+			mii.wID = MENU_EXPORT;
+			InsertMenuItem( hMenuSub_file, 5, TRUE, &mii );
+
+			mii.fType = MFT_SEPARATOR;
+			InsertMenuItem( hMenuSub_file, 6, TRUE, &mii );
+
+			mii.fType = MFT_STRING;
 			mii.dwTypeData = L"E&xit";
 			mii.cch = 5;
 			mii.wID = MENU_EXIT;
 			mii.fState = MFS_ENABLED;
-			InsertMenuItem( hMenuSub_file, 5, TRUE, &mii );
+			InsertMenuItem( hMenuSub_file, 7, TRUE, &mii );
 
 			// EDIT MENU
 			mii.fType = MFT_STRING;
@@ -288,6 +275,13 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 			mii.cch = 17;
 			mii.wID = MENU_SELECT_ALL;
 			InsertMenuItem( hMenuSub_edit, 2, TRUE, &mii );
+
+			// TOOLS MENU
+			mii.fType = MFT_STRING;
+			mii.dwTypeData = L"Map File Paths...\tCtrl+M";
+			mii.cch = 24;
+			mii.wID = MENU_SCAN;
+			InsertMenuItem( hMenuSub_tools, 0, TRUE, &mii );
 
 			// HELP MENU
 			mii.dwTypeData = L"&About";
@@ -308,10 +302,15 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 			mii.hSubMenu = hMenuSub_edit;
 			InsertMenuItem( g_hMenu, 1, TRUE, &mii );
 
+			mii.dwTypeData = L"&Tools";
+			mii.cch = 6;
+			mii.hSubMenu = hMenuSub_tools;
+			InsertMenuItem( g_hMenu, 2, TRUE, &mii );
+
 			mii.dwTypeData = L"&Help";
 			mii.cch = 5;
 			mii.hSubMenu = hMenuSub_help;
-			InsertMenuItem( g_hMenu, 2, TRUE, &mii );
+			InsertMenuItem( g_hMenu, 3, TRUE, &mii );
 
 			// Set our menu bar.
 			SetMenu( hWnd, g_hMenu );
@@ -381,7 +380,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 			SendMessage( g_hWnd_list, LVM_INSERTCOLUMN, 4, ( LPARAM )&lvc );
 
 			lvc.pszText = L"System";
-			lvc.cx = 120;
+			lvc.cx = 155;
 			SendMessage( g_hWnd_list, LVM_INSERTCOLUMN, 5, ( LPARAM )&lvc );
 
 			lvc.pszText = L"Location";
@@ -616,6 +615,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 						{
 							pi->offset = ofn.nFileOffset;
 							pi->output_path = NULL;
+							pi->type = 0;
 							cmd_line = 0;
 
 							// filepath will be freed in the thread.
@@ -657,6 +657,43 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					}
 					break;
 
+					case MENU_EXPORT:
+					{
+						wchar_t *file_path = ( wchar_t * )malloc( sizeof ( wchar_t ) * MAX_PATH );
+						memset( file_path, 0, sizeof ( wchar_t ) * MAX_PATH );
+
+						OPENFILENAME ofn = { 0 };
+						ofn.lStructSize = sizeof( OPENFILENAME );
+						ofn.hwndOwner = hWnd;
+						ofn.lpstrFilter = L"CSV (Comma delimited) (*.csv)\0*.csv\0";
+						ofn.lpstrDefExt = L"csv";
+						ofn.lpstrTitle = L"Export list to a CSV (comma-separated values) file";
+						ofn.lpstrFile = file_path;
+						ofn.nMaxFile = MAX_PATH;
+						ofn.Flags = OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT | OFN_READONLY;
+
+						if ( GetSaveFileNameW( &ofn ) )
+						{
+							save_param *save_type = ( save_param * )malloc( sizeof( save_param ) );	// Freed in the save_csv thread.
+							save_type->filepath = file_path;
+							save_type->lpiidl = NULL;
+							save_type->save_all = true;
+							CloseHandle( ( HANDLE )_beginthreadex( NULL, 0, &save_csv, ( void * )save_type, 0, NULL ) );
+
+						}
+						else
+						{
+							free( file_path );
+						}
+					}
+					break;
+
+					case MENU_SCAN:
+					{
+						SendMessage( g_hWnd_scan, WM_PROPAGATE, 0, 0 );
+					}
+					break;
+
 					case MENU_REMOVE_SEL:
 					{
 						// Hide the image window since the selected item will be deleted.
@@ -687,7 +724,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 					case MENU_ABOUT:
 					{
-						MessageBox( hWnd, L"Thumbs Viewer is made free under the GPLv3 license.\n\nCopyright \xA9 2011-2014 Eric Kutcher", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONINFORMATION );
+						MessageBox( hWnd, L"Thumbs Viewer is made free under the GPLv3 license.\r\n\r\nVersion 1.0.1.4\r\n\r\nCopyright \xA9 2011-2014 Eric Kutcher", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONINFORMATION );
 					}
 					break;
 
@@ -730,6 +767,15 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 							}
 							break;
 
+							case 'M':	// Map entry hash values to local files.
+							{
+								if ( SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 ) > 0 )
+								{
+									SendMessage( hWnd, WM_COMMAND, MENU_SCAN, 0 );
+								}
+							}
+							break;
+
 							case 'R':	// Remove selected items if Ctrl + R is down and there are selected items in the list.
 							{
 								if ( SendMessage( g_hWnd_list, LVM_GETSELECTEDCOUNT, 0, 0 ) > 0 )
@@ -748,6 +794,15 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 								else if ( SendMessage( g_hWnd_list, LVM_GETSELECTEDCOUNT, 0, 0 ) > 0 && ( GetKeyState( VK_SHIFT ) & 0x8000 ) ) // Shift down.
 								{
 									SendMessage( hWnd, WM_COMMAND, MENU_SAVE_SEL, 0 );
+								}
+							}
+							break;
+
+							case 'E':	// Export list to a CSV (comma-separated values) file.
+							{
+								if ( SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 ) > 0 )
+								{
+									SendMessage( hWnd, WM_COMMAND, MENU_EXPORT, 0 );
 								}
 							}
 							break;
@@ -1076,7 +1131,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 						return TRUE;	// Don't draw selected items because their lParam values are being deleted.
 					}
 
-					HBRUSH color = CreateSolidBrush( ( COLORREF )GetSysColor( COLOR_HOTLIGHT ) );
+					HBRUSH color = CreateSolidBrush( ( COLORREF )GetSysColor( COLOR_HIGHLIGHT ) );
 					FillRect( dis->hDC, &dis->rcItem, color );
 					DeleteObject( color );
 					selected = true;
@@ -1186,7 +1241,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 							}
 							else if ( ( ( fileinfo * )lvi.lParam )->si->system == 3 )
 							{
-								wcscpy_s( buf, MAX_PATH, L"Windows Vista/2008/7" );
+								wcscpy_s( buf, MAX_PATH, L"Windows Vista/2008/7/8/8.1" );
 							}
 							else
 							{
@@ -1222,11 +1277,11 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					rc.bottom = height;
 
 					// Shadow text position.
-					RECT rc2 = rc;
-					rc2.left += 1;
-					rc2.top += 1;
-					rc2.right += 1;
-					rc2.bottom += 1;
+					//RECT rc2 = rc;
+					//rc2.left += 1;
+					//rc2.top += 1;
+					//rc2.right += 1;
+					//rc2.bottom += 1;
 
 					// Create and save a bitmap in memory to paint to.
 					HDC hdcMem = CreateCompatibleDC( dis->hDC );
@@ -1244,16 +1299,18 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					if ( selected == true )
 					{
 						// Fill the background.
-						HBRUSH color = CreateSolidBrush( ( COLORREF )GetSysColor( COLOR_HOTLIGHT ) );
+						HBRUSH color = CreateSolidBrush( ( COLORREF )GetSysColor( COLOR_HIGHLIGHT ) );
 						FillRect( hdcMem, &rc, color );
 						DeleteObject( color );
 
 						// Shadow color - black.
-						SetTextColor( hdcMem, RGB( 0x00, 0x00, 0x00 ) );
-						DrawText( hdcMem, buf, -1, &rc2, DT_NOPREFIX | DT_SINGLELINE | DT_END_ELLIPSIS | RIGHT_COLUMNS );
+						//SetTextColor( hdcMem, RGB( 0x00, 0x00, 0x00 ) );
+						//DrawText( hdcMem, buf, -1, &rc2, DT_NOPREFIX | DT_SINGLELINE | DT_END_ELLIPSIS | RIGHT_COLUMNS );
+
 						// White text.
 						SetTextColor( hdcMem, RGB( 0xFF, 0xFF, 0xFF ) );
 						DrawText( hdcMem, buf, -1, &rc, DT_NOPREFIX | DT_SINGLELINE | DT_END_ELLIPSIS | RIGHT_COLUMNS );
+
 						BitBlt( dis->hDC, dis->rcItem.left + last_rc.left, last_rc.top, width, height, hdcMem, 0, 0, SRCCOPY );
 					}
 					else	// Draw normal text.
@@ -1264,11 +1321,13 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 						DeleteObject( color );
 
 						// Shadow color - light grey.
-						SetTextColor( hdcMem, RGB( 0xE0, 0xE0, 0xE0 ) );
-						DrawText( hdcMem, buf, -1, &rc2, DT_NOPREFIX | DT_SINGLELINE | DT_END_ELLIPSIS | RIGHT_COLUMNS );
+						//SetTextColor( hdcMem, RGB( 0xE0, 0xE0, 0xE0 ) );
+						//DrawText( hdcMem, buf, -1, &rc2, DT_NOPREFIX | DT_SINGLELINE | DT_END_ELLIPSIS | RIGHT_COLUMNS );
+
 						// Black text.
 						SetTextColor( hdcMem, RGB( 0x00, 0x00, 0x00 ) );
 						DrawText( hdcMem, buf, -1, &rc, DT_NOPREFIX | DT_SINGLELINE | DT_END_ELLIPSIS | RIGHT_COLUMNS );
+
 						BitBlt( dis->hDC, dis->rcItem.left + last_rc.left, last_rc.top, width, height, hdcMem, 0, 0, SRCAND );
 					}
 
@@ -1348,6 +1407,9 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 				delete gdi_image;
 			}
 
+			// Clean up our fileinfo tree.
+			rbt_delete( fileinfo_tree );
+
 			// Since this isn't owned by a window, we need to destroy it.
 			DestroyMenu( g_hMenuSub_context );
 
@@ -1375,6 +1437,7 @@ LRESULT CALLBACK ListViewSubProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			int count = DragQueryFile( ( HDROP )wParam, -1, NULL, 0 );
 
 			pathinfo *pi = ( pathinfo * )malloc( sizeof( pathinfo ) );
+			pi->type = 0;
 			pi->filepath = NULL;
 			pi->offset = 0;
 			pi->output_path = NULL;
