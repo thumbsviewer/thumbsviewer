@@ -37,11 +37,12 @@
 #include <gdiplus.h>
 #include <process.h>
 
-#include "rbt.h"
+#include "dllrbt.h"
 
 #include "resource.h"
 
-#define PROGRAM_CAPTION L"Thumbs Viewer"
+#define PROGRAM_CAPTION		L"Thumbs Viewer"
+#define PROGRAM_CAPTION_A	"Thumbs Viewer"
 
 #define MIN_WIDTH		480
 #define MIN_HEIGHT		320
@@ -61,6 +62,13 @@
 #define WM_PROPAGATE		WM_APP		// Updates the scan window.
 #define WM_DESTROY_ALT		WM_APP		// Allows non-window threads to call DestroyWindow.
 #define WM_CHANGE_CURSOR	WM_APP + 1	// Updates the window cursor.
+
+// fileinfo flags.
+#define FIF_TYPE_JPG		1
+#define FIF_TYPE_CMYK_JPG	2
+#define FIF_TYPE_PNG		4
+#define FIF_TYPE_UNKNOWN	8
+#define FIF_IN_TREE			16
 
 struct database_header
 {
@@ -139,8 +147,14 @@ struct fileinfo
 	unsigned long offset;				// Offset in SAT or short stream container (depends on size of entry)
 	unsigned long size;					// Size of file.
 	char entry_type;
-	char extension;						// 0 = none, 1/3 = jpg, 2 = png, 4 = unknown
-	bool mapped;						// false = not mapped, true = mapped hash
+	unsigned char flag;					// 1 = jpg, 2 = cmyk jpg, 4 = png, 8 = unknown, 16 = in tree.
+};
+
+// Holds duplicate entries.
+struct linked_list
+{
+	fileinfo *fi;
+	linked_list *next;
 };
 
 // Multi-file open structure.
@@ -156,7 +170,7 @@ struct pathinfo
 struct save_param
 {
 	wchar_t *filepath;		// Save directory.
-	LPITEMIDLIST lpiidl;	// BrowseForFolder variable when saving files.
+	unsigned char type;		// 0 = full path, 1 = build directory
 	bool save_all;			// Save All = true, Save Selected = false.
 };
 
@@ -178,6 +192,8 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 Gdiplus::Image *create_image( char *buffer, unsigned long size, unsigned char format, unsigned int raw_width = 0, unsigned int raw_height = 0, unsigned int raw_size = 0, int raw_stride = 0 );
 bool is_close( int a, int b );
 void update_menus( bool disable_all );
+void cleanup_fileinfo_tree();
+void cleanup_shared_info( shared_info **si );
 
 // These are all variables that are shared among the separate .cpp files.
 
@@ -221,7 +237,7 @@ extern wchar_t g_filepath[];		// Path to the files and folders to scan.
 extern wchar_t extension_filter[];	// A list of extensions to filter from a file scan.
 extern bool include_folders;		// Include folders in a file scan.
 extern bool show_details;			// Show details in the scan window.
-extern rbt_tree *fileinfo_tree;		// Red-black tree of fileinfo structures.
+extern dllrbt_tree *fileinfo_tree;	// Red-black tree of fileinfo structures.
 
 // Thread variables
 extern bool kill_thread;			// Allow for a clean shutdown.

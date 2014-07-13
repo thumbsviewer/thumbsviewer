@@ -48,16 +48,16 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 	// Get the default message system font.
 	NONCLIENTMETRICS ncm = { NULL };
 	ncm.cbSize = sizeof( NONCLIENTMETRICS );
-	SystemParametersInfoW( SPI_GETNONCLIENTMETRICS, sizeof( NONCLIENTMETRICS ), &ncm, 0 );
+	SystemParametersInfo( SPI_GETNONCLIENTMETRICS, sizeof( NONCLIENTMETRICS ), &ncm, 0 );
 
 	// Set our global font to the LOGFONT value obtained from the system.
 	hFont = CreateFontIndirect( &ncm.lfMessageFont );
 
 	// Get the system icon for each of the three file types.
-	SHFILEINFO shfi = { NULL }; 
-	SHGetFileInfo( L".png", FILE_ATTRIBUTE_NORMAL, &shfi, sizeof( shfi ), SHGFI_ICON | SHGFI_SMALLICON | SHGFI_USEFILEATTRIBUTES );
+	SHFILEINFOA shfi = { NULL }; 
+	SHGetFileInfoA( ".png", FILE_ATTRIBUTE_NORMAL, &shfi, sizeof( shfi ), SHGFI_ICON | SHGFI_SMALLICON | SHGFI_USEFILEATTRIBUTES );
 	hIcon_png = shfi.hIcon;
-	SHGetFileInfo( L".jpg", FILE_ATTRIBUTE_NORMAL, &shfi, sizeof( shfi ), SHGFI_ICON | SHGFI_SMALLICON | SHGFI_USEFILEATTRIBUTES );
+	SHGetFileInfoA( ".jpg", FILE_ATTRIBUTE_NORMAL, &shfi, sizeof( shfi ), SHGFI_ICON | SHGFI_SMALLICON | SHGFI_USEFILEATTRIBUTES );
 	hIcon_jpg = shfi.hIcon;
 
 	// Initialize our window class.
@@ -77,8 +77,8 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 
 	if ( !RegisterClassEx( &wcex ) )
 	{
-		MessageBox( NULL, L"Call to RegisterClassEx failed!", PROGRAM_CAPTION, MB_ICONWARNING );
-		return 1;
+		MessageBoxA( NULL, "Call to RegisterClassEx failed!", PROGRAM_CAPTION_A, MB_ICONWARNING );
+		goto CLEANUP;
 	}
 
 	wcex.lpfnWndProc    = ImageWndProc;
@@ -86,8 +86,8 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 
 	if ( !RegisterClassEx( &wcex ) )
 	{
-		MessageBox( NULL, L"Call to RegisterClassEx failed!", PROGRAM_CAPTION, MB_ICONWARNING );
-		return 1;
+		MessageBoxA( NULL, "Call to RegisterClassEx failed!", PROGRAM_CAPTION_A, MB_ICONWARNING );
+		goto CLEANUP;
 	}
 
 	wcex.lpfnWndProc    = ScanWndProc;
@@ -95,32 +95,32 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 
 	if ( !RegisterClassEx( &wcex ) )
 	{
-		MessageBox( NULL, L"Call to RegisterClassEx failed!", PROGRAM_CAPTION, MB_ICONWARNING );
-		return 1;
+		MessageBoxA( NULL, "Call to RegisterClassEx failed!", PROGRAM_CAPTION_A, MB_ICONWARNING );
+		goto CLEANUP;
 	}
 
 	g_hWnd_main = CreateWindow( L"thumbs", PROGRAM_CAPTION, WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, ( ( GetSystemMetrics( SM_CXSCREEN ) - MIN_WIDTH ) / 2 ), ( ( GetSystemMetrics( SM_CYSCREEN ) - MIN_HEIGHT ) / 2 ), MIN_WIDTH, MIN_HEIGHT, NULL, NULL, NULL, NULL );
 
 	if ( !g_hWnd_main )
 	{
-		MessageBox( NULL, L"Call to CreateWindow failed!", PROGRAM_CAPTION, MB_ICONWARNING );
-		return 1;
+		MessageBoxA( NULL, "Call to CreateWindow failed!", PROGRAM_CAPTION_A, MB_ICONWARNING );
+		goto CLEANUP;
 	}
 
 	g_hWnd_image = CreateWindow( L"image", PROGRAM_CAPTION, WS_OVERLAPPEDWINDOW, ( ( GetSystemMetrics( SM_CXSCREEN ) - MIN_WIDTH ) / 2 ), ( ( GetSystemMetrics( SM_CYSCREEN ) - MIN_HEIGHT ) / 2 ), MIN_HEIGHT, MIN_HEIGHT, NULL, NULL, NULL, NULL );
 
 	if ( !g_hWnd_image )
 	{
-		MessageBox( NULL, L"Call to CreateWindow failed!", PROGRAM_CAPTION, MB_ICONWARNING );
-		return 1;
+		MessageBoxA( NULL, "Call to CreateWindow failed!", PROGRAM_CAPTION_A, MB_ICONWARNING );
+		goto CLEANUP;
 	}
 
-	g_hWnd_scan = CreateWindow( L"scan", L"Map File Paths to Entry Hashes", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_CLIPCHILDREN, ( ( GetSystemMetrics( SM_CXSCREEN ) - MIN_WIDTH ) / 2 ), ( ( GetSystemMetrics( SM_CYSCREEN ) - ( MIN_HEIGHT - 125 ) ) / 2 ), MIN_WIDTH, ( MIN_HEIGHT - 125 ), g_hWnd_main, NULL, NULL, NULL );
+	g_hWnd_scan = CreateWindow( L"scan", L"Map File Paths to Entry Hashes", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_CLIPCHILDREN, ( ( GetSystemMetrics( SM_CXSCREEN ) - MIN_WIDTH ) / 2 ), ( ( GetSystemMetrics( SM_CYSCREEN ) - ( MIN_HEIGHT - 135 ) ) / 2 ), MIN_WIDTH, ( MIN_HEIGHT - 135 ), g_hWnd_main, NULL, NULL, NULL );
 
 	if ( !g_hWnd_scan )
 	{
-		MessageBox( NULL, L"Call to CreateWindow failed!", PROGRAM_CAPTION, MB_ICONWARNING );
-		return 1;
+		MessageBoxA( NULL, "Call to CreateWindow failed!", PROGRAM_CAPTION_A, MB_ICONWARNING );
+		goto CLEANUP;
 	}
 
 	// See if we have any command-line parameters
@@ -184,8 +184,12 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 					}
 					else	// Copy the paths into the NULL separated filepath.
 					{
-						wmemcpy_s( pi->filepath + filepath_offset, ( ( MAX_PATH * ( argCount - 1 ) ) + 1 ) - filepath_offset, szArgList[ i ], filepath_length + 1 );
-						filepath_offset += ( filepath_length + 1 );
+						// If the user typed a relative path, get the full path.
+						wchar_t full_path[ MAX_PATH ] = { 0 };
+						DWORD full_path_length = min( GetFullPathName( szArgList[ i ], MAX_PATH, full_path, NULL ), MAX_PATH );
+
+						wmemcpy_s( pi->filepath + filepath_offset, ( ( MAX_PATH * ( argCount - 1 ) ) + 1 ) - filepath_offset, full_path, full_path_length + 1 );
+						filepath_offset += ( full_path_length + 1 );
 					}
 				}
 
@@ -228,6 +232,12 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 			DispatchMessage( &msg );
 		}
 	}
+
+CLEANUP:
+
+	// Destroy our icons.
+	DestroyIcon( hIcon_png );
+	DestroyIcon( hIcon_jpg );
 
 	// Delete our font.
 	DeleteObject( hFont );
