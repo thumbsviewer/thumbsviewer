@@ -58,31 +58,31 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 			wchar_t current_directory[ MAX_PATH ] = { 0 };
 			GetCurrentDirectory( MAX_PATH, current_directory );
 
-			HWND g_hWnd_static1 = CreateWindow( WC_STATIC, L"Initial scan directory:", WS_CHILD | WS_VISIBLE, 20, 20, rc.right - 40, 15, hWnd, NULL, NULL, NULL );
+			HWND g_hWnd_static1 = CreateWindowA( WC_STATICA, "Initial scan directory:", WS_CHILD | WS_VISIBLE, 20, 20, rc.right - 40, 15, hWnd, NULL, NULL, NULL );
 			g_hWnd_path = CreateWindowEx( WS_EX_CLIENTEDGE, WC_EDIT, current_directory, ES_AUTOHSCROLL | ES_READONLY | WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ( HMENU )EDIT_PATH, NULL, NULL );
 			SendMessage( g_hWnd_path, EM_LIMITTEXT, MAX_PATH - 1, 0 );
 
-			g_hWnd_load = CreateWindow( WC_BUTTON, L"...", WS_CHILD | WS_TABSTOP | WS_VISIBLE, 0, 0, 0, 0, hWnd, ( HMENU )BTN_LOAD, NULL, NULL );
+			g_hWnd_load = CreateWindowA( WC_BUTTONA, "...", WS_CHILD | WS_TABSTOP | WS_VISIBLE, 0, 0, 0, 0, hWnd, ( HMENU )BTN_LOAD, NULL, NULL );
 
-			HWND g_hWnd_static2 = CreateWindow( WC_STATIC, L"Limit scan to the following file types:", WS_CHILD | WS_VISIBLE, 20, 70, rc.right - 40, 15, hWnd, NULL, NULL, NULL );
+			HWND g_hWnd_static2 = CreateWindowA( WC_STATICA, "Limit scan to the following file types:", WS_CHILD | WS_VISIBLE, 20, 65, rc.right - 40, 15, hWnd, NULL, NULL, NULL );
 			g_hWnd_extensions = CreateWindowEx( WS_EX_CLIENTEDGE, WC_EDIT, L".jpg|.jpeg|.png|.bmp|.gif", ES_AUTOHSCROLL | WS_CHILD | WS_TABSTOP | WS_VISIBLE, 0, 0, 0, 0, hWnd, NULL, NULL, NULL );
 			SendMessage( g_hWnd_extensions, EM_LIMITTEXT, MAX_PATH - 1, 0 );
 
-			g_hWnd_chk_folders = CreateWindow( WC_BUTTON, L"Include Folders", BS_AUTOCHECKBOX | WS_CHILD | WS_TABSTOP | WS_VISIBLE, 0, 0, 0, 0, hWnd, NULL, NULL, NULL );
+			g_hWnd_chk_folders = CreateWindowA( WC_BUTTONA, "Include Folders", BS_AUTOCHECKBOX | WS_CHILD | WS_TABSTOP | WS_VISIBLE, 0, 0, 0, 0, hWnd, NULL, NULL, NULL );
 
-			g_hWnd_static3 = CreateWindow( WC_STATIC, L"Current file/folder:", WS_CHILD, 20, 115, rc.right - 40, 15, hWnd, NULL, NULL, NULL );
-			g_hWnd_hashing = CreateWindowEx( WS_EX_CLIENTEDGE, WC_EDIT, NULL, ES_READONLY | WS_CHILD, 25, 130, rc.right - 40, 20, hWnd, NULL, NULL, NULL );
+			g_hWnd_static3 = CreateWindowA( WC_STATICA, "Current file/folder:", WS_CHILD, 20, 110, rc.right - 40, 15, hWnd, NULL, NULL, NULL );
+			g_hWnd_hashing = CreateWindowEx( WS_EX_CLIENTEDGE, WC_EDIT, NULL, ES_READONLY | WS_CHILD, 0, 0, 0, 0, hWnd, NULL, NULL, NULL );
 
-			g_hWnd_static4 = CreateWindow( WC_STATIC, L"Current file/folder hash:", WS_CHILD, 20, 160, rc.right - 310, 15, hWnd, NULL, NULL, NULL );
-			g_hWnd_static_hash = CreateWindow( WC_STATIC, NULL, WS_CHILD, rc.right - 290, 160, rc.right - 195, 15, hWnd, NULL, NULL, NULL );
+			g_hWnd_static4 = CreateWindowA( WC_STATICA, "Current file/folder hash:", WS_CHILD, 20, 155, rc.right - 310, 15, hWnd, NULL, NULL, NULL );
+			g_hWnd_static_hash = CreateWindow( WC_STATIC, NULL, WS_CHILD, rc.right - 290, 155, rc.right - 195, 15, hWnd, NULL, NULL, NULL );
 
-			g_hWnd_static5 = CreateWindow( WC_STATIC, L"Total files and/or folders:", WS_CHILD, 20, 180, rc.right - 310, 15, hWnd, NULL, NULL, NULL );
-			g_hWnd_static_count = CreateWindow( WC_STATIC, NULL, WS_CHILD, rc.right - 290, 180, rc.right - 195, 15, hWnd, NULL, NULL, NULL );
+			g_hWnd_static5 = CreateWindowA( WC_STATICA, "Total files and/or folders:", WS_CHILD, 20, 175, rc.right - 310, 15, hWnd, NULL, NULL, NULL );
+			g_hWnd_static_count = CreateWindow( WC_STATIC, NULL, WS_CHILD, rc.right - 290, 175, rc.right - 195, 15, hWnd, NULL, NULL, NULL );
 
-			g_hWnd_btn_details = CreateWindow( WC_BUTTON, L"Show Details \xBB", WS_CHILD | WS_TABSTOP | WS_VISIBLE, 0, 0, 0, 0, hWnd, ( HMENU )BTN_DETAILS, NULL, NULL );
+			g_hWnd_btn_details = CreateWindowA( WC_BUTTONA, "Show Details \xBB", WS_CHILD | WS_TABSTOP | WS_VISIBLE, 0, 0, 0, 0, hWnd, ( HMENU )BTN_DETAILS, NULL, NULL );
 
-			g_hWnd_btn_scan = CreateWindow( WC_BUTTON, L"Scan", BS_DEFPUSHBUTTON | WS_CHILD | WS_TABSTOP | WS_VISIBLE, 0, 0, 0, 0, hWnd, ( HMENU )BTN_SCAN, NULL, NULL );
-			g_hWnd_btn_cancel = CreateWindow( WC_BUTTON, L"Cancel", WS_CHILD | WS_TABSTOP | WS_VISIBLE, 0, 0, 0, 0, hWnd, ( HMENU )BTN_CANCEL, NULL, NULL );
+			g_hWnd_btn_scan = CreateWindowA( WC_BUTTONA, "Scan", BS_DEFPUSHBUTTON | WS_CHILD | WS_TABSTOP | WS_VISIBLE, 0, 0, 0, 0, hWnd, ( HMENU )BTN_SCAN, NULL, NULL );
+			g_hWnd_btn_cancel = CreateWindowA( WC_BUTTONA, "Cancel", WS_CHILD | WS_TABSTOP | WS_VISIBLE, 0, 0, 0, 0, hWnd, ( HMENU )BTN_CANCEL, NULL, NULL );
 
 			// Make pretty font.
 			SendMessage( g_hWnd_static1, WM_SETFONT, ( WPARAM )hFont, 0 );
@@ -194,6 +194,7 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 				{
 					if ( kill_scan == false )
 					{
+						EnableWindow( g_hWnd_btn_scan, FALSE );
 						kill_scan = true;
 						break;
 					}
@@ -231,7 +232,7 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 						}
 						else
 						{
-							MessageBox( hWnd, L"You must specify a valid path.", PROGRAM_CAPTION, MB_APPLMODAL | MB_ICONWARNING );
+							MessageBoxA( hWnd, "You must specify a valid path.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING );
 						}
 					}
 				}
@@ -250,7 +251,7 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					// Hiding the details will allow for a faster scan since it doesn't have to update our controls.
 					if ( show_details == true )
 					{
-						SendMessage( g_hWnd_btn_details, WM_SETTEXT, 0, ( LPARAM )L"Hide Details \xAB" );
+						SendMessageA( g_hWnd_btn_details, WM_SETTEXT, 0, ( LPARAM )"Hide Details \xAB" );
 						ShowWindow( g_hWnd_static3, SW_SHOW );
 						ShowWindow( g_hWnd_static4, SW_SHOW );
 						ShowWindow( g_hWnd_static5, SW_SHOW );
@@ -260,7 +261,7 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					}
 					else
 					{
-						SendMessage( g_hWnd_btn_details, WM_SETTEXT, 0, ( LPARAM )L"Show Details \xBB" );
+						SendMessageA( g_hWnd_btn_details, WM_SETTEXT, 0, ( LPARAM )"Show Details \xBB" );
 						ShowWindow( g_hWnd_static3, SW_HIDE );
 						ShowWindow( g_hWnd_static4, SW_HIDE );
 						ShowWindow( g_hWnd_static5, SW_HIDE );
@@ -270,9 +271,9 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					}
 
 					// Adjust the window height.
-					RECT rc = { 0 };
+					RECT rc;
 					GetWindowRect( hWnd, &rc );
-					SetWindowPos( hWnd, NULL, 0, 0, rc.right - rc.left, MIN_HEIGHT - ( show_details == true ? 40 : 125 ), SWP_NOMOVE );
+					SetWindowPos( hWnd, NULL, 0, 0, rc.right - rc.left, MIN_HEIGHT - ( show_details == true ? 45 : 135 ), SWP_NOMOVE );
 				}
 				break;
 
@@ -314,7 +315,7 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 		case WM_SIZE:
 		{
-			RECT rc = { 0 };
+			RECT rc;
 			GetClientRect( hWnd, &rc );
 
 			// Allow our controls to move in relation to the parent window.
@@ -322,11 +323,11 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 			DeferWindowPos( hdwp, g_hWnd_btn_cancel, HWND_TOP, rc.right - 90, rc.bottom - 32, 80, 23, 0 );
 			DeferWindowPos( hdwp, g_hWnd_btn_scan, HWND_TOP, rc.right - 175, rc.bottom - 32, 80, 23, 0 );
 			DeferWindowPos( hdwp, g_hWnd_btn_details, HWND_TOP, 10, rc.bottom - 32, 100, 23, 0 );
-			DeferWindowPos( hdwp, g_hWnd_hashing, HWND_TOP, 20, 130, rc.right - 40, 20, 0 );
-			DeferWindowPos( hdwp, g_hWnd_chk_folders, HWND_TOP, rc.right - 125, 85, 100, 20, 0 );
-			DeferWindowPos( hdwp, g_hWnd_extensions, HWND_TOP, 20, 85, rc.right - 150, 20, 0 );
-			DeferWindowPos( hdwp, g_hWnd_load, HWND_TOP, rc.right - 50, 40, 30, 20, 0 );
-			DeferWindowPos( hdwp, g_hWnd_path, HWND_TOP, 20, 40, rc.right - 75, 20, 0 );
+			DeferWindowPos( hdwp, g_hWnd_hashing, HWND_TOP, 20, 125, rc.right - 40, 20, 0 );
+			DeferWindowPos( hdwp, g_hWnd_chk_folders, HWND_TOP, rc.right - 120, 80, 100, 20, 0 );
+			DeferWindowPos( hdwp, g_hWnd_extensions, HWND_TOP, 20, 80, rc.right - 145, 20, 0 );
+			DeferWindowPos( hdwp, g_hWnd_load, HWND_TOP, rc.right - 50, 35, 30, 20, 0 );
+			DeferWindowPos( hdwp, g_hWnd_path, HWND_TOP, 20, 35, rc.right - 75, 20, 0 );
 			EndDeferWindowPos( hdwp );
 
 			return 0;
@@ -337,9 +338,9 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 		{
 			// Set the minimum dimensions that the window can be sized to.
 			( ( MINMAXINFO * )lParam )->ptMinTrackSize.x = MIN_WIDTH;
-			( ( MINMAXINFO * )lParam )->ptMinTrackSize.y = MIN_HEIGHT - ( show_details == true ? 40 : 125 );
-			( ( MINMAXINFO * )lParam )->ptMaxTrackSize.y = MIN_HEIGHT - ( show_details == true ? 40 : 125 );
-			
+			( ( MINMAXINFO * )lParam )->ptMinTrackSize.y = MIN_HEIGHT - ( show_details == true ? 45 : 135 );
+			( ( MINMAXINFO * )lParam )->ptMaxTrackSize.y = MIN_HEIGHT - ( show_details == true ? 45 : 135 );
+
 			return 0;
 		}
 		break;
@@ -371,8 +372,13 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 			{
 				kill_scan = false;
 
+				EnableWindow( g_hWnd_path, FALSE );
+				EnableWindow( g_hWnd_load, FALSE );
+				EnableWindow( g_hWnd_extensions, FALSE );
+				EnableWindow( g_hWnd_chk_folders, FALSE );
+
 				// We're scanning. Set the button's text to "Stop".
-				SendMessage( g_hWnd_btn_scan, WM_SETTEXT, 0, ( LPARAM )L"Stop" );
+				SendMessageA( g_hWnd_btn_scan, WM_SETTEXT, 0, ( LPARAM )"Stop" );
 			}
 			else if ( wParam == 2 )
 			{
@@ -380,13 +386,19 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 				if ( kill_scan == false )
 				{
 					SendMessage( g_hWnd_hashing, WM_SETTEXT, 0, 0 );
-					SendMessage( g_hWnd_static_hash, WM_SETTEXT, 0, 0 );
+					SendMessageA( g_hWnd_static_hash, WM_SETTEXT, 0, 0 );
 				}
 
 				kill_scan = true;
 
+				EnableWindow( g_hWnd_path, TRUE );
+				EnableWindow( g_hWnd_load, TRUE );
+				EnableWindow( g_hWnd_extensions, TRUE );
+				EnableWindow( g_hWnd_chk_folders, TRUE );
+
 				// We've stopped/finished scanning. Set the button's text to "Scan".
-				SendMessage( g_hWnd_btn_scan, WM_SETTEXT, 0, ( LPARAM )L"Scan" );
+				SendMessageA( g_hWnd_btn_scan, WM_SETTEXT, 0, ( LPARAM )"Scan" );
+				EnableWindow( g_hWnd_btn_scan, ( SendMessage( g_hWnd_path, WM_GETTEXTLENGTH, 0, 0 ) >= 3 ) ? TRUE : FALSE );
 			}
 			else if ( wParam == 3 )
 			{
@@ -394,11 +406,11 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 			}
 			else if ( wParam == 4 )
 			{
-				SendMessage( g_hWnd_static_hash, WM_SETTEXT, 0, lParam );
+				SendMessageA( g_hWnd_static_hash, WM_SETTEXT, 0, lParam );
 			}
 			else if ( wParam == 5 )
 			{
-				SendMessage( g_hWnd_static_count, WM_SETTEXT, 0, lParam );
+				SendMessageA( g_hWnd_static_count, WM_SETTEXT, 0, lParam );
 			}
 			else
 			{
@@ -406,9 +418,10 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 				// Reset text information.
 				SendMessage( g_hWnd_hashing, WM_SETTEXT, 0, 0 );
-				SendMessage( g_hWnd_static_hash, WM_SETTEXT, 0, 0 );
-				SendMessage( g_hWnd_static_count, WM_SETTEXT, 0, 0 );
-				SendMessage( g_hWnd_btn_scan, WM_SETTEXT, 0, ( LPARAM )L"Scan" );
+				SendMessageA( g_hWnd_static_hash, WM_SETTEXT, 0, 0 );
+				SendMessageA( g_hWnd_static_count, WM_SETTEXT, 0, 0 );
+				SendMessageA( g_hWnd_btn_scan, WM_SETTEXT, 0, ( LPARAM )"Scan" );
+				EnableWindow( g_hWnd_btn_scan, ( SendMessage( g_hWnd_path, WM_GETTEXTLENGTH, 0, 0 ) >= 3 ) ? TRUE : FALSE );
 
 				// Disable the main window.
 				EnableWindow( g_hWnd_main, FALSE );
