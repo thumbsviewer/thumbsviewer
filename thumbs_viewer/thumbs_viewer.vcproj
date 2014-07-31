@@ -179,6 +179,18 @@
 				>
 			</File>
 			<File
+				RelativePath=".\map_entries.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\menus.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\read_thumbs.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\thumbs_viewer.cpp"
 				>
 			</File>
@@ -213,7 +225,23 @@
 				>
 			</File>
 			<File
+				RelativePath=".\map_entries.h"
+				>
+			</File>
+			<File
+				RelativePath=".\menus.h"
+				>
+			</File>
+			<File
+				RelativePath=".\read_thumbs.h"
+				>
+			</File>
+			<File
 				RelativePath=".\resource.h"
+				>
+			</File>
+			<File
+				RelativePath=".\utilities.h"
 				>
 			</File>
 		</Filter>

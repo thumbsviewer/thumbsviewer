@@ -17,6 +17,7 @@
 */
 
 #include "globals.h"
+#include "read_thumbs.h"
 
 // We want to get these objects before the window is shown.
 
@@ -38,6 +39,8 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 {
 	Gdiplus::GdiplusStartupInput gdiplusStartupInput;
 	ULONG_PTR gdiplusToken;
+
+	unsigned char fail_type = 0;
 
 	// Initialize GDI+.
 	Gdiplus::GdiplusStartup( &gdiplusToken, &gdiplusStartupInput, NULL );
@@ -77,7 +80,7 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 
 	if ( !RegisterClassEx( &wcex ) )
 	{
-		MessageBoxA( NULL, "Call to RegisterClassEx failed!", PROGRAM_CAPTION_A, MB_ICONWARNING );
+		fail_type = 1;
 		goto CLEANUP;
 	}
 
@@ -86,7 +89,7 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 
 	if ( !RegisterClassEx( &wcex ) )
 	{
-		MessageBoxA( NULL, "Call to RegisterClassEx failed!", PROGRAM_CAPTION_A, MB_ICONWARNING );
+		fail_type = 1;
 		goto CLEANUP;
 	}
 
@@ -95,7 +98,7 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 
 	if ( !RegisterClassEx( &wcex ) )
 	{
-		MessageBoxA( NULL, "Call to RegisterClassEx failed!", PROGRAM_CAPTION_A, MB_ICONWARNING );
+		fail_type = 1;
 		goto CLEANUP;
 	}
 
@@ -103,7 +106,7 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 
 	if ( !g_hWnd_main )
 	{
-		MessageBoxA( NULL, "Call to CreateWindow failed!", PROGRAM_CAPTION_A, MB_ICONWARNING );
+		fail_type = 2;
 		goto CLEANUP;
 	}
 
@@ -111,7 +114,7 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 
 	if ( !g_hWnd_image )
 	{
-		MessageBoxA( NULL, "Call to CreateWindow failed!", PROGRAM_CAPTION_A, MB_ICONWARNING );
+		fail_type = 2;
 		goto CLEANUP;
 	}
 
@@ -119,7 +122,7 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 
 	if ( !g_hWnd_scan )
 	{
-		MessageBoxA( NULL, "Call to CreateWindow failed!", PROGRAM_CAPTION_A, MB_ICONWARNING );
+		fail_type = 2;
 		goto CLEANUP;
 	}
 
@@ -197,7 +200,7 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 				if ( pi->filepath[ 0 ] != NULL )
 				{
 					// filepath will be freed in the thread.
-					CloseHandle( ( HANDLE )_beginthreadex( NULL, 0, &read_database, ( void * )pi, 0, NULL ) );
+					CloseHandle( ( HANDLE )_beginthreadex( NULL, 0, &read_thumbs, ( void * )pi, 0, NULL ) );
 				}
 				else
 				{
@@ -247,6 +250,15 @@ CLEANUP:
 
 	// Shutdown GDI+
 	Gdiplus::GdiplusShutdown( gdiplusToken );
+
+	if ( fail_type == 1 )
+	{
+		MessageBoxA( NULL, "Call to RegisterClassEx failed!", PROGRAM_CAPTION_A, MB_ICONWARNING );
+	}
+	else if ( fail_type == 2 )
+	{
+		MessageBoxA( NULL, "Call to CreateWindow failed!", PROGRAM_CAPTION_A, MB_ICONWARNING );
+	}
 
 	return ( int )msg.wParam;
 }

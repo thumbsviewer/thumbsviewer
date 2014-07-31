@@ -17,8 +17,9 @@
 */
 
 #include "globals.h"
-
-#define NUM_COLUMNS 7
+#include "utilities.h"
+#include "read_thumbs.h"
+#include "menus.h"
 
 WNDPROC ListViewProc = NULL;		// Subclassed listview window.
 WNDPROC EditProc = NULL;			// Subclassed listview edit window.
@@ -30,9 +31,6 @@ LRESULT CALLBACK EditSubProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 // Object variables
 HWND g_hWnd_list = NULL;			// Handle to the listview control.
 HWND g_hWnd_edit = NULL;			// Handle to the listview edit control.
-
-HMENU g_hMenu = NULL;				// Handle to our menu bar.
-HMENU g_hMenuSub_context = NULL;	// Handle to our context menu.
 
 // Window variables
 int cx = 0;							// Current x (left) position of the main window based on the mouse.
@@ -56,76 +54,6 @@ HCURSOR wait_cursor = NULL;			// Temporary cursor while processing entries.
 // Image variables
 fileinfo *current_fileinfo = NULL;	// Holds information about the currently selected image. Gets deleted in WM_DESTROY.
 Gdiplus::Image *gdi_image = NULL;	// GDI+ image object. We need it to handle .png and .jpg images.
-
-bool is_close( int a, int b )
-{
-	// See if the distance between two points is less than the snap width.
-	return abs( a - b ) < SNAP_WIDTH;
-}
-
-// Enable/Disable the appropriate menu items depending on how many items exist as well as selected.
-void update_menus( bool disable_all )
-{
-	if ( disable_all == true )
-	{
-		EnableMenuItem( g_hMenu, MENU_OPEN, MF_DISABLED );
-		EnableMenuItem( g_hMenu, MENU_SAVE_ALL, MF_DISABLED );
-		EnableMenuItem( g_hMenu, MENU_SAVE_SEL, MF_DISABLED );
-		EnableMenuItem( g_hMenu, MENU_EXPORT, MF_DISABLED );
-		EnableMenuItem( g_hMenu, MENU_REMOVE_SEL, MF_DISABLED );
-		EnableMenuItem( g_hMenu, MENU_SELECT_ALL, MF_DISABLED );
-		EnableMenuItem( g_hMenu, MENU_SCAN, MF_DISABLED );
-		EnableMenuItem( g_hMenuSub_context, MENU_SAVE_SEL, MF_DISABLED );
-		EnableMenuItem( g_hMenuSub_context, MENU_REMOVE_SEL, MF_DISABLED );
-		EnableMenuItem( g_hMenuSub_context, MENU_SELECT_ALL, MF_DISABLED );
-	}
-	else
-	{
-		int item_count = SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 );
-		int sel_count = SendMessage( g_hWnd_list, LVM_GETSELECTEDCOUNT, 0, 0 );
-
-		if ( item_count > 0 )
-		{
-			EnableMenuItem( g_hMenu, MENU_SCAN, MF_ENABLED );
-			EnableMenuItem( g_hMenu, MENU_SAVE_ALL, MF_ENABLED );
-			EnableMenuItem( g_hMenu, MENU_EXPORT, MF_ENABLED );
-		}
-		else
-		{
-			EnableMenuItem( g_hMenu, MENU_SCAN, MF_DISABLED );
-			EnableMenuItem( g_hMenu, MENU_SAVE_ALL, MF_DISABLED );
-			EnableMenuItem( g_hMenu, MENU_EXPORT, MF_DISABLED );
-		}
-
-		if ( sel_count > 0 )
-		{
-			EnableMenuItem( g_hMenu, MENU_SAVE_SEL, MF_ENABLED );
-			EnableMenuItem( g_hMenu, MENU_REMOVE_SEL, MF_ENABLED );
-			EnableMenuItem( g_hMenuSub_context, MENU_SAVE_SEL, MF_ENABLED );
-			EnableMenuItem( g_hMenuSub_context, MENU_REMOVE_SEL, MF_ENABLED );
-		}
-		else
-		{
-			EnableMenuItem( g_hMenu, MENU_SAVE_SEL, MF_DISABLED );
-			EnableMenuItem( g_hMenu, MENU_REMOVE_SEL, MF_DISABLED );
-			EnableMenuItem( g_hMenuSub_context, MENU_SAVE_SEL, MF_DISABLED );
-			EnableMenuItem( g_hMenuSub_context, MENU_REMOVE_SEL, MF_DISABLED );
-		}
-
-		if ( sel_count != item_count )
-		{
-			EnableMenuItem( g_hMenu, MENU_SELECT_ALL, MF_ENABLED );
-			EnableMenuItem( g_hMenuSub_context, MENU_SELECT_ALL, MF_ENABLED );
-		}
-		else
-		{
-			EnableMenuItem( g_hMenu, MENU_SELECT_ALL, MF_DISABLED );
-			EnableMenuItem( g_hMenuSub_context, MENU_SELECT_ALL, MF_DISABLED );
-		}
-
-		EnableMenuItem( g_hMenu, MENU_OPEN, MF_ENABLED );
-	}
-}
 
 // Sort function for columns.
 int CALLBACK CompareFunc( LPARAM lParam1, LPARAM lParam2, LPARAM lParamSort )
@@ -177,6 +105,9 @@ int CALLBACK CompareFunc( LPARAM lParam1, LPARAM lParam2, LPARAM lParamSort )
 
 		case 5:
 		{
+			if ( fi1->si == NULL && fi2->si == NULL ) { return 0; }
+			else if ( fi1->si != NULL && fi2->si == NULL ) { return 1; }
+			else if ( fi1->si == NULL && fi2->si != NULL ) { return -1; }
 			if ( fi1->si->system == fi2->si->system )
 			{
 				return ( fi1->si->version > fi2->si->version );	// Based on our values for the system, this will be sorted by operating system age.
@@ -190,6 +121,9 @@ int CALLBACK CompareFunc( LPARAM lParam1, LPARAM lParam2, LPARAM lParamSort )
 
 		case 6:
 		{
+			if ( fi1->si == NULL && fi2->si == NULL ) { return 0; }
+			else if ( fi1->si != NULL && fi2->si == NULL ) { return 1; }
+			else if ( fi1->si == NULL && fi2->si != NULL ) { return -1; }
 			return _wcsicmp( fi1->si->dbpath, fi2->si->dbpath );
 		}
 		break;
@@ -208,139 +142,10 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
     {
 		case WM_CREATE:
 		{
-			// Create our menu objects.
-			g_hMenu = CreateMenu();
-			HMENU hMenuSub_file = CreatePopupMenu();
-			HMENU hMenuSub_edit = CreatePopupMenu();
-			HMENU hMenuSub_tools = CreatePopupMenu();
-			HMENU hMenuSub_help = CreatePopupMenu();
-			g_hMenuSub_context = CreatePopupMenu();
-
-			// FILE MENU
-			MENUITEMINFOA mii = { NULL };
-			mii.cbSize = sizeof( MENUITEMINFOA );
-			mii.fMask = MIIM_TYPE | MIIM_ID | MIIM_STATE;
-			mii.fType = MFT_STRING;
-			mii.dwTypeData = "&Open...\tCtrl+O";
-			mii.cch = 15;
-			mii.wID = MENU_OPEN;
-			InsertMenuItemA( hMenuSub_file, 0, TRUE, &mii );
-
-			mii.fType = MFT_SEPARATOR;
-			InsertMenuItemA( hMenuSub_file, 1, TRUE, &mii );
-
-			mii.fType = MFT_STRING;
-			mii.dwTypeData = "Save All...\tCtrl+S";
-			mii.cch = 18;
-			mii.wID = MENU_SAVE_ALL;
-			mii.fState = MFS_DISABLED;
-			InsertMenuItemA( hMenuSub_file, 2, TRUE, &mii );
-
-			mii.dwTypeData = "Save Selected...\tCtrl+Shift+S";
-			mii.cch = 29;
-			mii.wID = MENU_SAVE_SEL;
-			InsertMenuItemA( hMenuSub_file, 3, TRUE, &mii );
-
-			mii.fType = MFT_SEPARATOR;
-			InsertMenuItemA( hMenuSub_file, 4, TRUE, &mii );
-
-			mii.fType = MFT_STRING;
-			mii.dwTypeData = "Export to CSV...\tCtrl+E";
-			mii.cch = 23;
-			mii.wID = MENU_EXPORT;
-			InsertMenuItemA( hMenuSub_file, 5, TRUE, &mii );
-
-			mii.fType = MFT_SEPARATOR;
-			InsertMenuItemA( hMenuSub_file, 6, TRUE, &mii );
-
-			mii.fType = MFT_STRING;
-			mii.dwTypeData = "E&xit";
-			mii.cch = 5;
-			mii.wID = MENU_EXIT;
-			mii.fState = MFS_ENABLED;
-			InsertMenuItemA( hMenuSub_file, 7, TRUE, &mii );
-
-			// EDIT MENU
-			mii.fType = MFT_STRING;
-			mii.dwTypeData = "Remove Selected\tCtrl+R";
-			mii.cch = 22;
-			mii.wID = MENU_REMOVE_SEL;
-			mii.fState = MFS_DISABLED;
-			InsertMenuItemA( hMenuSub_edit, 0, TRUE, &mii );
-
-			mii.fType = MFT_SEPARATOR;
-			InsertMenuItemA( hMenuSub_edit, 1, TRUE, &mii );
-
-			mii.fType = MFT_STRING;
-			mii.dwTypeData = "Select All\tCtrl+A";
-			mii.cch = 17;
-			mii.wID = MENU_SELECT_ALL;
-			InsertMenuItemA( hMenuSub_edit, 2, TRUE, &mii );
-
-			// TOOLS MENU
-			mii.fType = MFT_STRING;
-			mii.dwTypeData = "Map File Paths...\tCtrl+M";
-			mii.cch = 24;
-			mii.wID = MENU_SCAN;
-			InsertMenuItemA( hMenuSub_tools, 0, TRUE, &mii );
-
-			// HELP MENU
-			mii.dwTypeData = "&About";
-			mii.cch = 6;
-			mii.wID = MENU_ABOUT;
-			mii.fState = MFS_ENABLED;
-			InsertMenuItemA( hMenuSub_help, 0, TRUE, &mii );
-
-			// MENU BAR
-			mii.fMask = MIIM_TYPE | MIIM_SUBMENU;
-			mii.dwTypeData = "&File";
-			mii.cch = 5;
-			mii.hSubMenu = hMenuSub_file;
-			InsertMenuItemA( g_hMenu, 0, TRUE, &mii );
-
-			mii.dwTypeData = "&Edit";
-			mii.cch = 5;
-			mii.hSubMenu = hMenuSub_edit;
-			InsertMenuItemA( g_hMenu, 1, TRUE, &mii );
-
-			mii.dwTypeData = "&Tools";
-			mii.cch = 6;
-			mii.hSubMenu = hMenuSub_tools;
-			InsertMenuItemA( g_hMenu, 2, TRUE, &mii );
-
-			mii.dwTypeData = "&Help";
-			mii.cch = 5;
-			mii.hSubMenu = hMenuSub_help;
-			InsertMenuItemA( g_hMenu, 3, TRUE, &mii );
+			CreateMenus();
 
 			// Set our menu bar.
 			SetMenu( hWnd, g_hMenu );
-
-			// CONTEXT MENU (for right click)
-			mii.fMask = MIIM_TYPE | MIIM_ID | MIIM_STATE;
-			mii.fState = MFS_DISABLED;
-			mii.dwTypeData = "Save Selected...";
-			mii.cch = 16;
-			mii.wID = MENU_SAVE_SEL;
-			InsertMenuItemA( g_hMenuSub_context, 0, TRUE, &mii );
-
-			mii.fType = MFT_SEPARATOR;
-			InsertMenuItemA( g_hMenuSub_context, 1, TRUE, &mii );
-
-			mii.fType = MFT_STRING;
-			mii.dwTypeData = "Remove Selected";
-			mii.cch = 15;
-			mii.wID = MENU_REMOVE_SEL;
-			InsertMenuItemA( g_hMenuSub_context, 2, TRUE, &mii );
-
-			mii.fType = MFT_SEPARATOR;
-			InsertMenuItemA( g_hMenuSub_context, 3, TRUE, &mii );
-
-			mii.fType = MFT_STRING;
-			mii.dwTypeData = "Select All";
-			mii.cch = 10;
-			mii.wID = MENU_SELECT_ALL;
-			InsertMenuItemA( g_hMenuSub_context, 4, TRUE, &mii );
 
 			// Create our listview window.
 			g_hWnd_list = CreateWindow( WC_LISTVIEW, NULL, LVS_REPORT | LVS_EDITLABELS | LVS_OWNERDRAWFIXED | WS_CHILDWINDOW | WS_VISIBLE, 0, 0, MIN_WIDTH, MIN_HEIGHT, hWnd, NULL, NULL, NULL );
@@ -620,7 +425,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 							cmd_line = 0;
 
 							// pi will be freed in the thread.
-							CloseHandle( ( HANDLE )_beginthreadex( NULL, 0, &read_database, ( void * )pi, 0, NULL ) );
+							CloseHandle( ( HANDLE )_beginthreadex( NULL, 0, &read_thumbs, ( void * )pi, 0, NULL ) );
 						}
 						else
 						{
@@ -714,6 +519,12 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					}
 					break;
 
+					case MENU_COPY_SEL:
+					{
+						CloseHandle( ( HANDLE )_beginthreadex( NULL, 0, &copy_items, ( void * )NULL, 0, NULL ) );
+					}
+					break;
+
 					case MENU_SELECT_ALL:
 					{
 						// Set the state of all items to selected.
@@ -723,13 +534,13 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 						lvi.stateMask = LVIS_SELECTED;
 						SendMessage( g_hWnd_list, LVM_SETITEMSTATE, -1, ( LPARAM )&lvi );
 
-						update_menus( false );
+						UpdateMenus( UM_ENABLE );
 					}
 					break;
 
 					case MENU_ABOUT:
 					{
-						MessageBoxA( hWnd, "Thumbs Viewer is made free under the GPLv3 license.\r\n\r\nVersion 1.0.1.5\r\n\r\nCopyright \xA9 2011-2014 Eric Kutcher", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONINFORMATION );
+						MessageBoxA( hWnd, "Thumbs Viewer is made free under the GPLv3 license.\r\n\r\nVersion 1.0.1.6\r\n\r\nCopyright \xA9 2011-2014 Eric Kutcher", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONINFORMATION );
 					}
 					break;
 
@@ -751,15 +562,17 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 			{
 				case LVN_KEYDOWN:
 				{
+					NMLVKEYDOWN *nmlvkd = ( NMLVKEYDOWN * )lParam;
+
 					// Make sure the control key is down and that we're not already in a worker thread. Prevents threads from queuing in case the user falls asleep on their keyboard.
 					if ( GetKeyState( VK_CONTROL ) & 0x8000 && in_thread == false )
 					{
 						// Determine which key was pressed.
-						switch ( ( ( LPNMLVKEYDOWN )lParam )->wVKey )
+						switch ( nmlvkd->wVKey )
 						{
 							case 'A':	// Select all items if Ctrl + A is down and there are items in the list.
 							{
-								if ( SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 ) > 0 )
+								if ( SendMessage( nmlvkd->hdr.hwndFrom, LVM_GETITEMCOUNT, 0, 0 ) > 0 )
 								{
 									SendMessage( hWnd, WM_COMMAND, MENU_SELECT_ALL, 0 );
 								}
@@ -774,7 +587,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 							case 'M':	// Map entry hash values to local files.
 							{
-								if ( SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 ) > 0 )
+								if ( SendMessage( nmlvkd->hdr.hwndFrom, LVM_GETITEMCOUNT, 0, 0 ) > 0 )
 								{
 									SendMessage( hWnd, WM_COMMAND, MENU_SCAN, 0 );
 								}
@@ -783,20 +596,29 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 							case 'R':	// Remove selected items if Ctrl + R is down and there are selected items in the list.
 							{
-								if ( SendMessage( g_hWnd_list, LVM_GETSELECTEDCOUNT, 0, 0 ) > 0 )
+								if ( SendMessage( nmlvkd->hdr.hwndFrom, LVM_GETSELECTEDCOUNT, 0, 0 ) > 0 )
 								{
 									SendMessage( hWnd, WM_COMMAND, MENU_REMOVE_SEL, 0 );
 								}
 							}
 							break;
 
+							case 'C':	// Copy selected items if Ctrl + C is down and there are selected items in the list.
+							{
+								if ( SendMessage( nmlvkd->hdr.hwndFrom, LVM_GETSELECTEDCOUNT, 0, 0 ) > 0 )
+								{
+									SendMessage( hWnd, WM_COMMAND, MENU_COPY_SEL, 0 );
+								}
+							}
+							break;
+
 							case 'S':	// Save all/selected items if Ctrl + S or Ctrl + Shift + S is down and there are items in the list.
 							{
-								if ( SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 ) > 0 && !( GetKeyState( VK_SHIFT ) & 0x8000 ) )	// Shift not down.
+								if ( SendMessage( nmlvkd->hdr.hwndFrom, LVM_GETITEMCOUNT, 0, 0 ) > 0 && !( GetKeyState( VK_SHIFT ) & 0x8000 ) )	// Shift not down.
 								{
 									SendMessage( hWnd, WM_COMMAND, MENU_SAVE_ALL, 0 );
 								}
-								else if ( SendMessage( g_hWnd_list, LVM_GETSELECTEDCOUNT, 0, 0 ) > 0 && ( GetKeyState( VK_SHIFT ) & 0x8000 ) ) // Shift down.
+								else if ( SendMessage( nmlvkd->hdr.hwndFrom, LVM_GETSELECTEDCOUNT, 0, 0 ) > 0 && ( GetKeyState( VK_SHIFT ) & 0x8000 ) ) // Shift down.
 								{
 									SendMessage( hWnd, WM_COMMAND, MENU_SAVE_SEL, 0 );
 								}
@@ -805,7 +627,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 							case 'E':	// Export list to a CSV (comma-separated values) file.
 							{
-								if ( SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 ) > 0 )
+								if ( SendMessage( nmlvkd->hdr.hwndFrom, LVM_GETITEMCOUNT, 0, 0 ) > 0 )
 								{
 									SendMessage( hWnd, WM_COMMAND, MENU_EXPORT, 0 );
 								}
@@ -818,6 +640,8 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 				case LVN_COLUMNCLICK:
 				{
+					NMLISTVIEW *nmlv = ( NMLISTVIEW * )lParam;
+
 					// Change the format of the items in the column if Ctrl is held while clicking the column.
 					if ( GetKeyState( VK_CONTROL ) & 0x8000 )
 					{
@@ -825,30 +649,30 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 						if ( ( ( NMLISTVIEW * )lParam )->iSubItem == 2 )
 						{
 							is_kbytes_size = !is_kbytes_size;
-							InvalidateRect( g_hWnd_list, NULL, TRUE );
+							InvalidateRect( nmlv->hdr.hwndFrom, NULL, TRUE );
 						}
 					}
 					else	// Normal column click. Sort the items in the column.
 					{
 						LVCOLUMN lvc = { NULL };
 						lvc.mask = LVCF_FMT;
-						SendMessage( g_hWnd_list, LVM_GETCOLUMN, ( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )&lvc );
+						SendMessage( nmlv->hdr.hwndFrom, LVM_GETCOLUMN, ( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )&lvc );
 
 						if ( HDF_SORTUP & lvc.fmt )	// Column is sorted upward.
 						{
 							// Sort down
 							lvc.fmt = lvc.fmt & ( ~HDF_SORTUP ) | HDF_SORTDOWN;
-							SendMessage( g_hWnd_list, LVM_SETCOLUMN, ( WPARAM )( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )&lvc );
+							SendMessage( nmlv->hdr.hwndFrom, LVM_SETCOLUMN, ( WPARAM )( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )&lvc );
 
-							SendMessage( g_hWnd_list, LVM_SORTITEMS, ( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )( PFNLVCOMPARE )CompareFunc );
+							SendMessage( nmlv->hdr.hwndFrom, LVM_SORTITEMS, ( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )( PFNLVCOMPARE )CompareFunc );
 						}
 						else if ( HDF_SORTDOWN & lvc.fmt )	// Column is sorted downward.
 						{
 							// Sort up
 							lvc.fmt = lvc.fmt & ( ~HDF_SORTDOWN ) | HDF_SORTUP;
-							SendMessage( g_hWnd_list, LVM_SETCOLUMN, ( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )&lvc );
+							SendMessage( nmlv->hdr.hwndFrom, LVM_SETCOLUMN, ( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )&lvc );
 
-							SendMessage( g_hWnd_list, LVM_SORTITEMS, ( ( NMLISTVIEW * )lParam )->iSubItem + NUM_COLUMNS, ( LPARAM )( PFNLVCOMPARE )CompareFunc );
+							SendMessage( nmlv->hdr.hwndFrom, LVM_SORTITEMS, ( ( NMLISTVIEW * )lParam )->iSubItem + NUM_COLUMNS, ( LPARAM )( PFNLVCOMPARE )CompareFunc );
 						}
 						else	// Column has no sorting set.
 						{
@@ -856,19 +680,19 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 							for ( int i = 0; i < NUM_COLUMNS; i++ )
 							{
 								// Get the current format
-								SendMessage( g_hWnd_list, LVM_GETCOLUMN, i, ( LPARAM )&lvc );
+								SendMessage( nmlv->hdr.hwndFrom, LVM_GETCOLUMN, i, ( LPARAM )&lvc );
 								// Remove sort up and sort down
 								lvc.fmt = lvc.fmt & ( ~HDF_SORTUP ) & ( ~HDF_SORTDOWN );
-								SendMessage( g_hWnd_list, LVM_SETCOLUMN, i, ( LPARAM )&lvc );
+								SendMessage( nmlv->hdr.hwndFrom, LVM_SETCOLUMN, i, ( LPARAM )&lvc );
 							}
 
 							// Read current the format from the clicked column
-							SendMessage( g_hWnd_list, LVM_GETCOLUMN, ( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )&lvc );
+							SendMessage( nmlv->hdr.hwndFrom, LVM_GETCOLUMN, ( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )&lvc );
 							// Sort down to start.
 							lvc.fmt = lvc.fmt | HDF_SORTDOWN;
-							SendMessage( g_hWnd_list, LVM_SETCOLUMN, ( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )&lvc );
+							SendMessage( nmlv->hdr.hwndFrom, LVM_SETCOLUMN, ( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )&lvc );
 
-							SendMessage( g_hWnd_list, LVM_SORTITEMS, ( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )( PFNLVCOMPARE )CompareFunc );
+							SendMessage( nmlv->hdr.hwndFrom, LVM_SORTITEMS, ( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )( PFNLVCOMPARE )CompareFunc );
 						}
 					}
 				}
@@ -885,17 +709,13 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 				case LVN_DELETEITEM:
 				{
+					NMLISTVIEW *nmlv = ( NMLISTVIEW * )lParam;
+
 					// Item count will be 1 since the item hasn't yet been deleted.
-					if ( SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 ) == 1 )
+					if ( SendMessage( nmlv->hdr.hwndFrom, LVM_GETITEMCOUNT, 0, 0 ) == 1 )
 					{
 						// Disable the menus that require at least one item in the list.
-						EnableMenuItem( g_hMenu, MENU_SAVE_ALL, MF_DISABLED );
-						EnableMenuItem( g_hMenu, MENU_SAVE_SEL, MF_DISABLED );
-						EnableMenuItem( g_hMenu, MENU_REMOVE_SEL, MF_DISABLED );
-						EnableMenuItem( g_hMenu, MENU_SELECT_ALL, MF_DISABLED );
-						EnableMenuItem( g_hMenuSub_context, MENU_SAVE_SEL, MF_DISABLED );
-						EnableMenuItem( g_hMenuSub_context, MENU_REMOVE_SEL, MF_DISABLED );
-						EnableMenuItem( g_hMenuSub_context, MENU_SELECT_ALL, MF_DISABLED );
+						UpdateMenus( UM_DISABLE_OVERRIDE );
 					}
 				}
 				break;
@@ -906,7 +726,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 					if ( in_thread == false )
 					{
-						update_menus( false );
+						UpdateMenus( UM_ENABLE );
 					}
 
 					// Only load images that are selected and in focus.
@@ -919,7 +739,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					LVITEM lvi = { NULL };
 					lvi.mask = LVIF_PARAM;
 					lvi.iItem = nmlv->iItem;
-					SendMessage( g_hWnd_list, LVM_GETITEM, 0, ( LPARAM )&lvi );
+					SendMessage( nmlv->hdr.hwndFrom, LVM_GETITEM, 0, ( LPARAM )&lvi );
 
 					fileinfo *fi = ( fileinfo * )lvi.lParam;
 					if ( fi == NULL )
@@ -1050,7 +870,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					lvi.iItem = pdi->item.iItem;
 					lvi.iSubItem = 1;
 					lvi.mask = LVIF_PARAM;
-					SendMessage( g_hWnd_list, LVM_GETITEM, 0, ( LPARAM )&lvi );
+					SendMessage( pdi->hdr.hwndFrom, LVM_GETITEM, 0, ( LPARAM )&lvi );
 
 					// Save our current fileinfo.
 					current_fileinfo = ( fileinfo * )lvi.lParam;
@@ -1062,10 +882,10 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					// Get the bounding box of the Filename column we're editing.
 					current_edit_pos.top = 1;
 					current_edit_pos.left = LVIR_BOUNDS;
-					SendMessage( g_hWnd_list, LVM_GETSUBITEMRECT, pdi->item.iItem, ( LPARAM )&current_edit_pos );
+					SendMessage( pdi->hdr.hwndFrom, LVM_GETSUBITEMRECT, pdi->item.iItem, ( LPARAM )&current_edit_pos );
 
 					// Get the edit control that the listview creates.
-					g_hWnd_edit = ( HWND )SendMessage( g_hWnd_list, LVM_GETEDITCONTROL, 0, 0 );
+					g_hWnd_edit = ( HWND )SendMessage( pdi->hdr.hwndFrom, LVM_GETEDITCONTROL, 0, 0 );
 
 					// Subclass our edit window to modify its position.
 					EditProc = ( WNDPROC )GetWindowLongPtr( g_hWnd_edit, GWL_WNDPROC );
@@ -1136,7 +956,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 				// Alternate item color's background.
 				if ( dis->itemID % 2 )	// Even rows will have a light grey background.
 				{
-					HBRUSH color = CreateSolidBrush( ( COLORREF )RGB( 0xF7, 0xF7, 0xF7 )  );
+					HBRUSH color = CreateSolidBrush( ( COLORREF )RGB( 0xF7, 0xF7, 0xF7 ) );
 					FillRect( dis->hDC, &dis->rcItem, color );
 					DeleteObject( color );
 				}
@@ -1160,7 +980,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 				LVITEM lvi = { 0 };
 				lvi.mask = LVIF_PARAM;
 				lvi.iItem = dis->itemID;
-				SendMessage( g_hWnd_list, LVM_GETITEM, 0, ( LPARAM )&lvi );	// Get the lParam value from our item.
+				SendMessage( dis->hwndItem, LVM_GETITEM, 0, ( LPARAM )&lvi );	// Get the lParam value from our item.
 
 				fileinfo *fi = ( fileinfo * )lvi.lParam;
 				if ( fi == NULL || ( fi != NULL && fi->si == NULL ) )
@@ -1236,7 +1056,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 							}
 							else	// No date.
 							{
-								buf[ 0 ] = '\0';
+								buf[ 0 ] = L'\0';
 							}
 						}
 						break;
@@ -1253,11 +1073,11 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 							}
 							else if ( fi->si->system == 3 )
 							{
-								wcscpy_s( buf, MAX_PATH, L"Windows Vista/2008/7/8/8.1" );
+								buf = L"Windows Vista/2008/7/8/8.1";
 							}
 							else
 							{
-								wcscpy_s( buf, MAX_PATH, L"Unknown" );
+								buf = L"Unknown";
 							}
 						}
 						break;
@@ -1270,7 +1090,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					}
 
 					// Get the dimensions of the listview column
-					SendMessage( g_hWnd_list, LVM_GETCOLUMN, i, ( LPARAM )&lvc );
+					SendMessage( dis->hwndItem, LVM_GETCOLUMN, i, ( LPARAM )&lvc );
 
 					last_rc = dis->rcItem;
 
@@ -1361,7 +1181,10 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 			// Prevent the possibility of running additional processes.
 			EnableWindow( hWnd, FALSE );
 			ShowWindow( hWnd, SW_HIDE );
+			EnableWindow( g_hWnd_image, FALSE );
 			ShowWindow( g_hWnd_image, SW_HIDE );
+			EnableWindow( g_hWnd_scan, FALSE );
+			ShowWindow( g_hWnd_scan, SW_HIDE );
 
 			// If we're in a secondary thread, then kill it (cleanly) and wait for it to exit.
 			if ( in_thread == true )
@@ -1370,7 +1193,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 			}
 			else	// Otherwise, destroy the window normally.
 			{
-				kill_thread = true;
+				g_kill_thread = true;
 				DestroyWindow( hWnd );
 			}
 
@@ -1405,7 +1228,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 				{
 					if ( fi->si != NULL )
 					{
-						fi->si->count--;
+						--( fi->si->count );
 
 						// Remove our shared information from the linked list if there's no more items for this database.
 						if ( fi->si->count == 0 )
@@ -1510,7 +1333,7 @@ LRESULT CALLBACK ListViewSubProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 				wmemset( pi->filepath + file_offset, L'\0', 1 );
 
 				// filepath will be freed in the thread.
-				CloseHandle( ( HANDLE )_beginthreadex( NULL, 0, &read_database, ( void * )pi, 0, NULL ) );
+				CloseHandle( ( HANDLE )_beginthreadex( NULL, 0, &read_thumbs, ( void * )pi, 0, NULL ) );
 			}
 			else	// No files were dropped.
 			{
