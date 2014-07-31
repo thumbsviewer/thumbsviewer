@@ -17,67 +17,26 @@
 */
 
 #include "globals.h"
+#include "utilities.h"
+#include "read_thumbs.h"
+#include "menus.h"
 
 #include <stdio.h>
-#include <stdlib.h>
-
-#define FILE_TYPE_JPEG	"\xFF\xD8\xFF\xE0"
-#define FILE_TYPE_PNG	"\x89\x50\x4E\x47\x0D\x0A\x1A\x0A"
-
-// Return status codes for various functions.
-#define SC_FAIL	0
-#define SC_OK	1
-#define SC_QUIT	2
 
 HANDLE shutdown_semaphore = NULL;	// Blocks shutdown while a worker thread is active.
-bool kill_thread = false;			// Allow for a clean shutdown.
+bool g_kill_thread = false;			// Allow for a clean shutdown.
 
 CRITICAL_SECTION pe_cs;				// Queues additional worker threads.
 bool in_thread = false;				// Flag to indicate that we're in a worker thread.
 bool skip_draw = false;				// Prevents WM_DRAWITEM from accessing listview items while we're removing them.
 
-unsigned long msat_size = 0;
-unsigned long sat_size = 0;
-unsigned long ssat_size = 0;
-
-long *g_msat = NULL;
-
-// 20 bytes
-#define jfif_header		"\xFF\xD8\xFF\xE0\x00\x10\x4A\x46\x49\x46\x00\x01\x01\x01\x00\x60" \
-						"\x00\x60\x00\x00"
-
-// 138 bytes (Luminance and Chrominance)
-#define quantization	"\xFF\xDB\x00\x43\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\x09" \
-						"\x09\x08\x0A\x0C\x14\x0D\x0C\x0B\x0B\x0C\x19\x12\x13\x0F\x14\x1D" \
-						"\x1A\x1F\x1E\x1D\x1A\x1C\x1C\x20\x24\x2E\x27\x20\x22\x2C\x23\x1C" \
-						"\x1C\x28\x37\x29\x2C\x30\x31\x34\x34\x34\x1F\x27\x39\x3D\x38\x32" \
-						"\x3C\x2E\x33\x34\x32"											   \
-						"\xFF\xDB\x00\x43\x01\x09\x09\x09\x0C\x0B\x0C\x18\x0D\x0D\x18\x32" \
-						"\x21\x1C\x21\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32" \
-						"\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32" \
-						"\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32" \
-						"\x32\x32\x32\x32\x32"
-
-// 216 bytes
-#define huffman_table	"\xFF\xC4\x00\x1F\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00" \
-						"\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A" \
-						"\x0B\xFF\xC4\x00\xB5\x10\x00\x02\x01\x03\x03\x02\x04\x03\x05\x05" \
-						"\x04\x04\x00\x00\x01\x7D\x01\x02\x03\x00\x04\x11\x05\x12\x21\x31" \
-						"\x41\x06\x13\x51\x61\x07\x22\x71\x14\x32\x81\x91\xA1\x08\x23\x42" \
-						"\xB1\xC1\x15\x52\xD1\xF0\x24\x33\x62\x72\x82\x09\x0A\x16\x17\x18" \
-						"\x19\x1A\x25\x26\x27\x28\x29\x2A\x34\x35\x36\x37\x38\x39\x3A\x43" \
-						"\x44\x45\x46\x47\x48\x49\x4A\x53\x54\x55\x56\x57\x58\x59\x5A\x63" \
-						"\x64\x65\x66\x67\x68\x69\x6A\x73\x74\x75\x76\x77\x78\x79\x7A\x83" \
-						"\x84\x85\x86\x87\x88\x89\x8A\x92\x93\x94\x95\x96\x97\x98\x99\x9A" \
-						"\xA2\xA3\xA4\xA5\xA6\xA7\xA8\xA9\xAA\xB2\xB3\xB4\xB5\xB6\xB7\xB8" \
-						"\xB9\xBA\xC2\xC3\xC4\xC5\xC6\xC7\xC8\xC9\xCA\xD2\xD3\xD4\xD5\xD6" \
-						"\xD7\xD8\xD9\xDA\xE1\xE2\xE3\xE4\xE5\xE6\xE7\xE8\xE9\xEA\xF1\xF2" \
-						"\xF3\xF4\xF5\xF6\xF7\xF8\xF9\xFA"
-
 dllrbt_tree *fileinfo_tree = NULL;	// Red-black tree of fileinfo structures.
 
-unsigned int file_count = 0;	// Number of files scanned.
-unsigned int match_count = 0;	// Number of files that match an entry hash.
+bool is_close( int a, int b )
+{
+	// See if the distance between two points is less than the snap width.
+	return abs( a - b ) < SNAP_WIDTH;
+}
 
 void Processing_Window( bool enable )
 {
@@ -86,16 +45,16 @@ void Processing_Window( bool enable )
 		SetWindowTextA( g_hWnd_main, "Thumbs Viewer - Please wait..." );	// Update the window title.
 		EnableWindow( g_hWnd_list, FALSE );									// Prevent any interaction with the listview while we're processing.
 		SendMessage( g_hWnd_main, WM_CHANGE_CURSOR, TRUE, 0 );				// SetCursor only works from the main thread. Set it to an arrow with hourglass.
+		UpdateMenus( UM_DISABLE );											// Disable all processing menu items.
 	}
 	else
 	{
+		UpdateMenus( UM_ENABLE );								// Enable all processing menu items.
 		SendMessage( g_hWnd_main, WM_CHANGE_CURSOR, FALSE, 0 );	// Reset the cursor.
 		EnableWindow( g_hWnd_list, TRUE );						// Allow the listview to be interactive. Also forces a refresh to update the item count column.
 		SetFocus( g_hWnd_list );								// Give focus back to the listview to allow shortcut keys.
 		SetWindowTextA( g_hWnd_main, PROGRAM_CAPTION_A );		// Reset the window title.
 	}
-
-	update_menus( enable );	// Disable all processing menu items.
 }
 
 int dllrbt_compare( void *a, void *b )
@@ -205,7 +164,7 @@ void create_fileinfo_tree()
 	for ( int i = 0; i < item_count; ++i )
 	{
 		// We don't want to continue scanning if the user cancels the scan.
-		if ( kill_scan == true )
+		if ( g_kill_scan == true )
 		{
 			break;
 		}
@@ -223,222 +182,41 @@ void create_fileinfo_tree()
 
 			if ( filename != NULL )
 			{
-				fi->entry_hash = _wcstoui64( filename + 1, NULL, 16 );
-
-				// Create the node to insert into a linked list.
-				linked_list *fi_node = ( linked_list * )malloc( sizeof( linked_list ) );
-				fi_node->fi = fi;
-				fi_node->next = NULL;
-
-				// See if our tree has the hash to add the node to.
-				linked_list *ll = ( linked_list * )dllrbt_find( fileinfo_tree, ( void * )fi->entry_hash, true );
-				if ( ll == NULL )
+				int filename_length = wcslen( filename + 1 );
+				if ( filename_length <= 16 && filename_length >= 0 )
 				{
-					if ( dllrbt_insert( fileinfo_tree, ( void * )fi->entry_hash, fi_node ) != DLLRBT_STATUS_OK )
+					fi->entry_hash = _wcstoui64( filename + 1, NULL, 16 );
+
+					// Create the node to insert into a linked list.
+					linked_list *fi_node = ( linked_list * )malloc( sizeof( linked_list ) );
+					fi_node->fi = fi;
+					fi_node->next = NULL;
+
+					// See if our tree has the hash to add the node to.
+					linked_list *ll = ( linked_list * )dllrbt_find( fileinfo_tree, ( void * )fi->entry_hash, true );
+					if ( ll == NULL )
 					{
-						free( fi_node );
+						if ( dllrbt_insert( fileinfo_tree, ( void * )fi->entry_hash, fi_node ) != DLLRBT_STATUS_OK )
+						{
+							free( fi_node );
+						}
+						else
+						{
+							fi->flag |= FIF_IN_TREE;
+						}
 					}
-					else
+					else	// If a hash exits, insert the node into the linked list.
 					{
+						linked_list *next = ll->next;	// We'll insert the node after the head.
+						fi_node->next = next;
+						ll->next = fi_node;
+
 						fi->flag |= FIF_IN_TREE;
 					}
 				}
-				else	// If a hash exits, insert the node into the linked list.
-				{
-					linked_list *next = ll->next;	// We'll insert the node after the head.
-					fi_node->next = next;
-					ll->next = fi_node;
-
-					fi->flag |= FIF_IN_TREE;
-				}
 			}
 		}
 	}
-
-	file_count = 0;		// Reset the file count.
-	match_count = 0;	// Reset the match count.
-}
-
-void update_scan_info( unsigned long long hash, wchar_t *filepath )
-{
-	// Now that we have a hash value to compare, search our fileinfo tree for the same value.
-	linked_list *ll = ( linked_list * )dllrbt_find( fileinfo_tree, ( void * )hash, true );
-	while ( ll != NULL )
-	{
-		if ( ll->fi != NULL )
-		{
-			++match_count;
-
-			// Replace the hash filename with the local filename.
-			free( ll->fi->filename );
-			ll->fi->filename = _wcsdup( filepath );
-		}
-
-		ll = ll->next;
-	}
-
-	++file_count; 
-
-	// Update our scan window with new scan information.
-	if ( show_details == true )
-	{
-		SendMessage( g_hWnd_scan, WM_PROPAGATE, 3, ( LPARAM )filepath );
-		char buf[ 19 ] = { 0 };
-		sprintf_s( buf, 19, "0x%016llx", hash );
-		SendMessageA( g_hWnd_scan, WM_PROPAGATE, 4, ( LPARAM )buf );
-		sprintf_s( buf, 19, "%lu", file_count );
-		SendMessageA( g_hWnd_scan, WM_PROPAGATE, 5, ( LPARAM )buf );
-	}
-}
-
-unsigned long long hash_data( char *data, unsigned long long hash, short length )
-{
-	while ( length-- > 0 )
-	{
-		hash = ( ( ( hash * 0x820 ) + ( *data++ & 0x00000000000000FF ) ) + ( hash >> 2 ) ) ^ hash;
-	}
-
-	return hash;
-}
-
-void hash_file( wchar_t *filepath, wchar_t *filename )
-{
-	// Initial hash value. This value was found in thumbcache.dll.
-	unsigned long long hash = 0x295BA83CF71232D9;
-
-	// Hash the filename.
-	hash = hash_data( ( char * )filename, hash, wcslen( filename ) * sizeof( wchar_t ) );
-
-	update_scan_info( hash, filepath );
-}
-
-void traverse_directory( wchar_t *path )
-{
-	// We don't want to continue scanning if the user cancels the scan.
-	if ( kill_scan == true )
-	{
-		return;
-	}
-
-	// Set the file path to search for all files/folders in the current directory.
-	wchar_t filepath[ MAX_PATH ];
-	swprintf_s( filepath, MAX_PATH, L"%s\\*", path );
-
-	WIN32_FIND_DATA FindFileData;
-	HANDLE hFind = FindFirstFileEx( ( LPCWSTR )filepath, FindExInfoStandard, &FindFileData, FindExSearchNameMatch, NULL, 0 );
-	if ( hFind != INVALID_HANDLE_VALUE ) 
-	{
-		do
-		{
-			if ( kill_scan == true )
-			{
-				break;	// We need to close the find file handle.
-			}
-
-			wchar_t next_path[ MAX_PATH ];
-
-			// See if the file is a directory.
-			if ( ( FindFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) != 0 )
-			{
-				// Go through all directories except "." and ".." (current and parent)
-				if ( ( wcscmp( FindFileData.cFileName, L"." ) != 0 ) && ( wcscmp( FindFileData.cFileName, L".." ) != 0 ) )
-				{
-					// Move to the next directory.
-					swprintf_s( next_path, MAX_PATH, L"%s\\%s", path, FindFileData.cFileName );
-
-					traverse_directory( next_path );
-
-					// Only hash folders if enabled.
-					if ( include_folders == true )
-					{
-						hash_file( next_path, FindFileData.cFileName );
-					}
-				}
-			}
-			else
-			{
-				// See if the file's extension is in our filter. Go to the next file if it's not.
-				wchar_t *ext = get_extension_from_filename( FindFileData.cFileName, wcslen( FindFileData.cFileName ) );
-				if ( extension_filter[ 0 ] != 0 )
-				{
-					// Do a case-insensitive substring search for the extension.
-					int ext_length = wcslen( ext );
-					wchar_t *temp_ext = ( wchar_t * )malloc( sizeof( wchar_t ) * ( ext_length + 3 ) );
-					for ( int i = 0; i < ext_length; ++i )
-					{
-						temp_ext[ i + 1 ] = towlower( ext[ i ] );
-					}
-					temp_ext[ 0 ] = L'|';				// Append the delimiter to the beginning of the string.
-					temp_ext[ ext_length + 1 ] = L'|';	// Append the delimiter to the end of the string.
-					temp_ext[ ext_length + 2 ] = L'\0';
-
-					if ( wcsstr( extension_filter, temp_ext ) == NULL )
-					{
-						free( temp_ext );
-						continue;
-					}
-
-					free( temp_ext );
-				}
-
-				swprintf_s( next_path, MAX_PATH, L"%s\\%s", path, FindFileData.cFileName );
-
-				hash_file( next_path, FindFileData.cFileName );
-			}
-		}
-		while ( FindNextFile( hFind, &FindFileData ) != 0 );	// Go to the next file.
-
-		FindClose( hFind );	// Close the find file handle.
-	}
-}
-
-unsigned __stdcall scan_files( void *pArguments )
-{
-	// This will block every other thread from entering until the first thread is complete.
-	EnterCriticalSection( &pe_cs );
-
-	SetWindowTextA( g_hWnd_scan, "Map File Paths to Entry Hashes - Please wait..." );	// Update the window title.
-	SendMessage( g_hWnd_scan, WM_CHANGE_CURSOR, TRUE, 0 );	// SetCursor only works from the main thread. Set it to an arrow with hourglass.
-
-	// Disable scan button, enable cancel button.
-	SendMessage( g_hWnd_scan, WM_PROPAGATE, 1, 0 );
-
-	create_fileinfo_tree();
-
-	traverse_directory( g_filepath );
-
-	InvalidateRect( g_hWnd_list, NULL, TRUE );
-
-	// Update the details.
-	if ( show_details == false )
-	{
-		char msg[ 11 ] = { 0 };
-		sprintf_s( msg, 11, "%lu", file_count );
-		SendMessageA( g_hWnd_scan, WM_PROPAGATE, 5, ( LPARAM )msg );
-	}
-
-	// Reset button and text.
-	SendMessage( g_hWnd_scan, WM_PROPAGATE, 2, 0 );
-
-	if ( match_count > 0 )
-	{
-		char msg[ 30 ] = { 0 };
-		sprintf_s( msg, 30, "%d file%s mapped.", match_count, ( match_count > 1 ? "s were" : " was" ) );
-		MessageBoxA( g_hWnd_scan, msg, PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONINFORMATION );
-	}
-	else
-	{
-		MessageBoxA( g_hWnd_scan, "No files were mapped.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONINFORMATION );
-	}
-
-	SendMessage( g_hWnd_scan, WM_CHANGE_CURSOR, FALSE, 0 );	// Reset the cursor.
-	SetWindowTextA( g_hWnd_scan, "Map File Paths to Entry Hashes" );	// Reset the window title.
-
-	// We're done. Let other threads continue.
-	LeaveCriticalSection( &pe_cs );
-
-	_endthreadex( 0 );
-	return 0;
 }
 
 int GetEncoderClsid( const WCHAR *format, CLSID *pClsid )
@@ -615,7 +393,7 @@ unsigned __stdcall cleanup( void *pArguments )
 	// This semaphore will be released when the thread gets killed.
 	shutdown_semaphore = CreateSemaphore( NULL, 0, 1, NULL );
 
-	kill_thread = true;	// Causes secondary threads to cease processing and release the semaphore.
+	g_kill_thread = true;	// Causes secondary threads to cease processing and release the semaphore.
 
 	// Wait for any active threads to complete. 5 second timeout in case we miss the release.
 	WaitForSingleObject( shutdown_semaphore, 5000 );
@@ -624,6 +402,251 @@ unsigned __stdcall cleanup( void *pArguments )
 
 	// DestroyWindow won't work on a window from a different thread. So we'll send a message to trigger it.
 	SendMessage( g_hWnd_main, WM_DESTROY_ALT, 0, 0 );
+
+	_endthreadex( 0 );
+	return 0;
+}
+
+unsigned __stdcall copy_items( void *pArguments )
+{
+	// This will block every other thread from entering until the first thread is complete.
+	EnterCriticalSection( &pe_cs );
+
+	in_thread = true;
+
+	Processing_Window( true );
+
+	LVITEM lvi = { 0 };
+	lvi.mask = LVIF_PARAM;
+	lvi.iItem = -1;	// Set this to -1 so that the LVM_GETNEXTITEM call can go through the list correctly.
+
+	int item_count = SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 );
+	int sel_count = SendMessage( g_hWnd_list, LVM_GETSELECTEDCOUNT, 0, 0 );
+	
+	bool copy_all = false;
+	if ( item_count == sel_count )
+	{
+		copy_all = true;
+	}
+	else
+	{
+		item_count = sel_count;
+	}
+
+	unsigned int buffer_size = 8192;
+	unsigned int buffer_offset = 0;
+	wchar_t *copy_buffer = ( wchar_t * )malloc( sizeof( wchar_t ) * buffer_size );	// Allocate 8 kilobytes.
+
+	int value_length = 0;
+
+	wchar_t tbuf[ MAX_PATH ];
+	wchar_t *buf = tbuf;
+
+	bool add_newline = false;
+	bool add_tab = false;
+
+	// Go through each item, and copy their lParam values.
+	for ( int i = 0; i < item_count; ++i )
+	{
+		// Stop processing and exit the thread.
+		if ( g_kill_thread == true )
+		{
+			break;
+		}
+
+		if ( copy_all == true )
+		{
+			lvi.iItem = i;
+		}
+		else
+		{
+			lvi.iItem = SendMessage( g_hWnd_list, LVM_GETNEXTITEM, lvi.iItem, LVNI_SELECTED );
+		}
+
+		SendMessage( g_hWnd_list, LVM_GETITEM, 0, ( LPARAM )&lvi );
+
+		fileinfo *fi = ( fileinfo * )lvi.lParam;
+
+		if ( fi == NULL || ( fi != NULL && fi->si == NULL ) )
+		{
+			continue;
+		}
+
+		add_newline = add_tab = false;
+
+		for ( int j = 1; j < NUM_COLUMNS; ++j )
+		{
+			switch ( j )
+			{
+				case 1:
+				{
+					buf = fi->filename;
+					value_length = ( buf != NULL ? wcslen( buf ) : 0 );
+				}
+				break;
+
+				case 2:
+				{
+					buf = tbuf;	// Reset the buffer pointer.
+
+					// Depending on our toggle, output the size in either kilobytes or bytes.
+					value_length = swprintf_s( buf, MAX_PATH, ( is_kbytes_size == true ? L"%d KB" : L"%d B" ), ( is_kbytes_size == true ? fi->size / 1024 : fi->size ) );
+				}
+				break;
+
+				case 3:
+				{
+					// Distinguish between Short SAT and SAT entries.
+					value_length = swprintf_s( buf, MAX_PATH, ( fi->size < fi->si->short_sect_cutoff ? L"%d in SSAT" : L"%d in SAT" ), fi->offset );
+				}
+				break;
+
+				case 4:
+				{
+					// Format the date if there is one.
+					if ( fi->date_modified > 0 )
+					{
+						SYSTEMTIME st;
+						FILETIME ft;
+						ft.dwLowDateTime = ( DWORD )fi->date_modified;
+						ft.dwHighDateTime = ( DWORD )( fi->date_modified >> 32 );
+						FileTimeToSystemTime( &ft, &st );
+						value_length = swprintf_s( buf, MAX_PATH, L"%d/%d/%d (%02d:%02d:%02d.%d)", st.wMonth, st.wDay, st.wYear, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds );
+					}
+					else	// No date.
+					{
+						buf = NULL;
+						value_length = 0;
+					}
+				}
+				break;
+
+				case 5:
+				{
+					buf = tbuf;	// Reset the buffer pointer.
+
+					if ( fi->si->system == 1 )
+					{
+						value_length = swprintf_s( buf, MAX_PATH, L"%d: Windows Me/2000", fi->si->version );
+					}
+					else if ( fi->si->system == 2 )
+					{
+						value_length = swprintf_s( buf, MAX_PATH, L"%d: Windows XP/2003", fi->si->version );
+					}
+					else if ( fi->si->system == 3 )
+					{
+						buf = L"Windows Vista/2008/7/8/8.1";
+						value_length = 26;
+					}
+					else
+					{
+						buf = L"Unknown";
+						value_length = 7;
+					}
+				}
+				break;
+
+				case 6:
+				{
+					buf = fi->si->dbpath;
+					value_length = wcslen( buf );
+				}
+				break;
+			}
+
+			if ( buf == NULL )
+			{
+				if ( j == 1 )
+				{
+					add_tab = false;
+				}
+
+				continue;
+			}
+
+			if ( j > 1 && add_tab == true )
+			{
+				*( copy_buffer + buffer_offset ) = L'\t';
+				++buffer_offset;
+			}
+
+			add_tab = true;
+
+			while ( buffer_offset + value_length + 3 >= buffer_size )	// Add +3 for \t and \r\n
+			{
+				buffer_size += 8192;
+				wchar_t *realloc_buffer = ( wchar_t * )realloc( copy_buffer, sizeof( wchar_t ) * buffer_size );
+				if ( realloc_buffer == NULL )
+				{
+					goto CLEANUP;
+				}
+
+				copy_buffer = realloc_buffer;
+			}
+			wmemcpy_s( copy_buffer + buffer_offset, buffer_size - buffer_offset, buf, value_length );
+			buffer_offset += value_length;
+
+			add_newline = true;
+		}
+
+		if ( i < item_count - 1 && add_newline == true )	// Add newlines for every item except the last.
+		{
+			*( copy_buffer + buffer_offset ) = L'\r';
+			++buffer_offset;
+			*( copy_buffer + buffer_offset ) = L'\n';
+			++buffer_offset;
+		}
+		else if ( ( i == item_count - 1 && add_newline == false ) && buffer_offset >= 2 )	// If add_newline is false for the last item, then a newline character is in the buffer.
+		{
+			buffer_offset -= 2;	// Ignore the last newline in the buffer.
+		}
+	}
+
+	if ( OpenClipboard( g_hWnd_list ) )
+	{
+		EmptyClipboard();
+
+		DWORD len = buffer_offset;
+
+		// Allocate a global memory object for the text.
+		HGLOBAL hglbCopy = GlobalAlloc( GMEM_MOVEABLE, sizeof( wchar_t ) * ( len + 1 ) );
+		if ( hglbCopy != NULL )
+		{
+			// Lock the handle and copy the text to the buffer. lptstrCopy doesn't get freed.
+			wchar_t *lptstrCopy = ( wchar_t * )GlobalLock( hglbCopy );
+			if ( lptstrCopy != NULL )
+			{
+				wmemcpy_s( lptstrCopy, len + 1, copy_buffer, len );
+				lptstrCopy[ len ] = 0; // Sanity
+			}
+
+			GlobalUnlock( hglbCopy );
+
+			if ( SetClipboardData( CF_UNICODETEXT, hglbCopy ) == NULL )
+			{
+				GlobalFree( hglbCopy );	// Only free this Global memory if SetClipboardData fails.
+			}
+
+			CloseClipboard();
+		}
+	}
+
+CLEANUP:
+
+	free( copy_buffer );
+
+	Processing_Window( false );
+
+	// Release the semaphore if we're killing the thread.
+	if ( shutdown_semaphore != NULL )
+	{
+		ReleaseSemaphore( shutdown_semaphore, 1, NULL );
+	}
+
+	in_thread = false;
+
+	// We're done. Let other threads continue.
+	LeaveCriticalSection( &pe_cs );
 
 	_endthreadex( 0 );
 	return 0;
@@ -655,7 +678,7 @@ unsigned __stdcall remove_items( void *pArguments )
 		for ( int i = 0; i < item_count; ++i )
 		{
 			// Stop processing and exit the thread.
-			if ( kill_thread == true )
+			if ( g_kill_thread == true )
 			{
 				break;
 			}
@@ -670,7 +693,7 @@ unsigned __stdcall remove_items( void *pArguments )
 			{
 				if ( fi->si != NULL )
 				{
-					fi->si->count--;
+					--( fi->si->count );
 
 					// Remove our shared information from the linked list if there's no more items for this database.
 					if ( fi->si->count == 0 )
@@ -710,7 +733,7 @@ unsigned __stdcall remove_items( void *pArguments )
 		for ( int i = 0; i < sel_count; i++ )
 		{
 			// Stop processing and exit the thread.
-			if ( kill_thread == true )
+			if ( g_kill_thread == true )
 			{
 				break;
 			}
@@ -775,7 +798,7 @@ unsigned __stdcall remove_items( void *pArguments )
 
 				if ( fi->si != NULL )
 				{
-					fi->si->count--;
+					--( fi->si->count );
 
 					// Remove our shared information from the linked list if there's no more items for this database.
 					if ( fi->si->count == 0 )
@@ -910,7 +933,7 @@ unsigned __stdcall save_csv( void *pArguments )
 			for ( int i = 0; i < save_items; ++i )
 			{
 				// Stop processing and exit the thread.
-				if ( kill_thread == true )
+				if ( g_kill_thread == true )
 				{
 					break;
 				}
@@ -1101,7 +1124,7 @@ unsigned __stdcall save_items( void *pArguments )
 		for ( int i = 0; i < save_items; ++i )
 		{
 			// Stop processing and exit the thread.
-			if ( kill_thread == true )
+			if ( g_kill_thread == true )
 			{
 				break;
 			}
@@ -1272,1193 +1295,6 @@ unsigned __stdcall save_items( void *pArguments )
 	{
 		// DestroyWindow won't work on a window from a different thread. So we'll send a message to trigger it.
 		SendMessage( g_hWnd_main, WM_DESTROY_ALT, 0, 0 );
-	}
-
-	in_thread = false;
-
-	// We're done. Let other threads continue.
-	LeaveCriticalSection( &pe_cs );
-
-	_endthreadex( 0 );
-	return 0;
-}
-
-// Extract the file from the SAT or short stream container.
-char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
-{
-	char *buf = NULL;
-
-	if ( fi == NULL || ( fi != NULL && fi->si == NULL ) )
-	{
-		return NULL;
-	}
-
-	if ( fi->entry_type == 2 )
-	{
-		// See if the stream is in the SAT.
-		if ( fi->size >= fi->si->short_sect_cutoff && fi->si->sat != NULL )
-		{
-			DWORD read = 0, total = 0;
-			long sat_index = fi->offset; 
-			unsigned long sector_offset = fi->si->sect_size + ( sat_index * fi->si->sect_size );
-			unsigned long bytes_to_read = fi->si->sect_size;
-
-			bool exit_extract = false;
-
-			// Attempt to open a file for reading.
-			HANDLE hFile = CreateFile( fi->si->dbpath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
-			if ( hFile == INVALID_HANDLE_VALUE )
-			{
-				return NULL;
-			}
-
-			buf = ( char * )malloc( sizeof( char ) * fi->size );
-			memset( buf, 0, sizeof( char ) * fi->size );
-
-			while ( total < fi->size )
-			{
-				// The Short SAT should terminate with -2, but we shouldn't get here before the for loop completes.
-				if ( sat_index < 0 )
-				{
-					if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "Invalid SAT termination index.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-					break;
-				}
-				
-				// Each index should be no greater than the size of the SAT array.
-				if ( sat_index > ( long )( fi->si->num_sat_sects * ( fi->si->sect_size / sizeof( long ) ) ) )
-				{
-					if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "SAT index out of bounds.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-					exit_extract = true;
-				}
-
-				// Adjust the file pointer to the Short SAT
-				SetFilePointer( hFile, sector_offset, 0, FILE_BEGIN );
-
-				if ( exit_extract == false )
-				{
-					sector_offset = fi->si->sect_size + ( fi->si->sat[ sat_index ] * fi->si->sect_size );
-				}
-
-				if ( total + fi->si->sect_size > fi->size )
-				{
-					bytes_to_read = fi->size - total;
-				}
-
-				ReadFile( hFile, buf + total, bytes_to_read, &read, NULL );
-				total += read;
-
-				if ( read < bytes_to_read )
-				{
-					if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "Premature end of file encountered while extracting the file.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-					break;
-				}
-
-				if ( exit_extract == true )
-				{
-					break;
-				}
-
-				sat_index = fi->si->sat[ sat_index ];
-			}
-
-			CloseHandle( hFile );
-
-			header_offset = 0;
-			if ( total > sizeof( unsigned long ) )
-			{
-				memcpy_s( &header_offset, sizeof( unsigned long ), buf, sizeof( unsigned long ) );
-
-				if ( header_offset > total )
-				{
-					header_offset = 0;
-				}
-			}
-
-			size = total - header_offset;
-
-			// See if there's a second header.
-			// The first header will look like this:
-			// Header length (4 bytes) - I wonder if this value also dictates the content type?
-			// Some value (4 bytes)
-			// Content length (4 bytes)
-			if ( size > 2 && memcmp( buf + header_offset, "\xFF\xD8", 2 ) != 0 )
-			{
-				// Second header exists. Reconstruct the image.
-				// The second header will look like this:
-				// Some value (4 bytes)
-				// Content length (4 bytes)
-				// Image width (4 bytes)
-				// Image height (4 bytes)
-				unsigned long second_header = 0;
-				memcpy_s( &second_header, sizeof( unsigned long ), buf + header_offset, sizeof( unsigned long ) );
-				if ( second_header == 1 )
-				{
-					char *buf2 = ( char * )malloc( sizeof( char ) * total + 374 - 30 );
-
-					memcpy_s( buf2, total + 374 - 30, jfif_header, 20 );
-					memcpy_s( buf2 + 20, total + 374 - 30 - 20, quantization, 138 );
-					memcpy_s( buf2 + 158, total + 374 - 30 - 158, buf + 30, 22 );
-					memcpy_s( buf2 + 180, total + 374 - 30 - 180, huffman_table, 216 );
-					memcpy_s( buf2 + 396, total + 374 - 30 - 396, buf + 52, total - 52 );
-
-					free( buf );
-
-					buf = buf2;
-
-					header_offset = 0;
-
-					size = total + 374 - 30;
-
-					fi->flag |= FIF_TYPE_CMYK_JPG;
-				}
-			}
-		}
-		else if ( fi->si->short_stream_container != NULL && fi->si->ssat != NULL )	// Stream is in the short stream.
-		{
-			DWORD read = 0;
-			long ssat_index = fi->offset;
-			unsigned long sector_offset = 0;
-
-			buf = ( char * )malloc( sizeof( char ) * fi->size );
-			memset( buf, 0, sizeof( char ) * fi->size );
-
-			unsigned long buf_offset = 0;
-			unsigned long bytes_to_read = 64;
-			while ( buf_offset < fi->size )
-			{
-				// The Short SAT should terminate with -2, but we shouldn't get here before the for loop completes.
-				if ( ssat_index < 0 )
-				{
-					if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "Invalid Short SAT termination index.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-					break;
-				}
-				
-				// Each index should be no greater than the size of the Short SAT array.
-				if ( ssat_index > ( long )( fi->si->num_ssat_sects * ( fi->si->sect_size / sizeof( long ) ) ) )
-				{
-					if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "Short SAT index out of bounds.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-					break;
-				}
-
-				sector_offset = ssat_index * 64;
-
-				if ( buf_offset + 64 > fi->size )
-				{
-					bytes_to_read = fi->size - buf_offset;
-				}
-
-				memcpy_s( buf + buf_offset, fi->size - buf_offset, fi->si->short_stream_container + sector_offset, bytes_to_read );
-				buf_offset += bytes_to_read;
-
-				ssat_index = fi->si->ssat[ ssat_index ];
-			}
-
-			header_offset = 0;
-			if ( buf_offset > sizeof( unsigned long ) )
-			{
-				memcpy_s( &header_offset, sizeof( unsigned long ), buf, sizeof( unsigned long ) );
-
-				if ( header_offset > fi->size )
-				{
-					header_offset = 0;
-				}
-			}
-
-			size = fi->size - header_offset;
-
-			// The first header will look like this:
-			// Header length (4 bytes) - I wonder if this value also dictates the content type?
-			// Some value (4 bytes)
-			// Content length (4 bytes)
-			// See if there's a second header.
-			if ( size > 2 && memcmp( buf + header_offset, "\xFF\xD8", 2 ) != 0 )
-			{
-				// The second header will look like this:
-				// Some value (4 bytes)
-				// Content length (4 bytes)
-				// Image width (4 bytes)
-				// Image height (4 bytes)
-				// Second header exists. Reconstruct the image.
-				unsigned long second_header = 0;
-				memcpy_s( &second_header, sizeof( unsigned long ), buf + header_offset, sizeof( unsigned long ) );
-				if ( second_header == 1 )
-				{
-					char *buf2 = ( char * )malloc( sizeof( char ) * fi->size + 374 - 30 );
-
-					memcpy_s( buf2, fi->size + 374 - 30, jfif_header, 20 );
-					memcpy_s( buf2 + 20, fi->size + 374 - 30 - 20, quantization, 138 );
-					memcpy_s( buf2 + 158, fi->size + 374 - 30 - 158, buf + 30, 22 );
-					memcpy_s( buf2 + 180, fi->size + 374 - 30 - 180, huffman_table, 216 );
-					memcpy_s( buf2 + 396, fi->size + 374 - 30 - 396, buf + 52, fi->size - 52 );
-
-					free( buf );
-
-					buf = buf2;
-
-					header_offset = 0;
-
-					size = fi->size + 374 - 30;
-
-					fi->flag |= FIF_TYPE_CMYK_JPG;
-				}
-			}
-		}
-	}
-
-	// Set the extension if none has been set.
-	if ( !( fi->flag & 0x0F ) && buf != NULL )	// Mask the first 4 bits to see if an extension has been set.
-	{
-		// Detect the file extension and copy it into the filename string.
-		if ( size > 4 && memcmp( buf + header_offset, FILE_TYPE_JPEG, 4 ) == 0 )		// First 4 bytes
-		{
-			fi->flag |= FIF_TYPE_JPG;
-		}
-		else if ( size > 8 && memcmp( buf + header_offset, FILE_TYPE_PNG, 8 ) == 0 )	// First 8 bytes
-		{
-			fi->flag |= FIF_TYPE_PNG;
-		}
-		else
-		{
-			fi->flag |= FIF_TYPE_UNKNOWN;
-		}
-	}
-
-	return buf;
-}
-
-// Entries that exist in the catalog will be updated.
-// Me, and 2000 will have full paths.
-// XP and 2003 will just have the file name.
-// Windows Vista, 2008, and 7 don't appear to have catalogs.
-char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh )
-{
-	if ( fi == NULL || ( fi != NULL && fi->si == NULL ) )
-	{
-		return SC_FAIL;	// Fail silently. Don't do shared_info cleanup.
-	}
-
-	char *buf = NULL;
-	if ( dh.stream_length >= fi->si->short_sect_cutoff && fi->si->sat != NULL )
-	{
-		DWORD read = 0, total = 0;
-		long sat_index = dh.first_stream_sect; 
-		unsigned long sector_offset = fi->si->sect_size + ( sat_index * fi->si->sect_size );
-		unsigned long bytes_to_read = fi->si->sect_size;
-
-		bool exit_update = false;
-
-		buf = ( char * )malloc( sizeof( char ) * dh.stream_length );
-		memset( buf, 0, sizeof( char ) * dh.stream_length );
-
-		while ( total < dh.stream_length )
-		{
-			// Stop processing and exit the thread.
-			if ( kill_thread == true )
-			{
-				free( buf );
-				return SC_QUIT;	// Quit silently. Don't do shared_info cleanup.
-			}
-
-			// The SAT should terminate with -2, but we shouldn't get here before the for loop completes.
-			if ( sat_index < 0 )
-			{
-				if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "Invalid SAT termination index.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-				break;
-			}
-			
-			// Each index should be no greater than the size of the SAT array.
-			if ( sat_index > ( long )( fi->si->num_sat_sects * ( fi->si->sect_size / sizeof( long ) ) ) )
-			{
-				if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "SAT index out of bounds.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-				exit_update = true;
-			}
-
-			// Adjust the file pointer to the SAT
-			SetFilePointer( hFile, sector_offset, 0, FILE_BEGIN );
-
-			if ( exit_update == false )
-			{
-				sector_offset = fi->si->sect_size + ( fi->si->sat[ sat_index ] * fi->si->sect_size );
-			}
-
-			if ( total + fi->si->sect_size > dh.stream_length )
-			{
-				bytes_to_read = dh.stream_length - total;
-			}
-
-			ReadFile( hFile, buf + total, bytes_to_read, &read, NULL );
-			total += read;
-
-			if ( read < bytes_to_read )
-			{
-				if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "Premature end of file encountered while updating the directory.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-				break;
-			}
-
-			if ( exit_update == true )
-			{
-				break;
-			}
-
-			sat_index = fi->si->sat[ sat_index ];
-		}
-	}
-	else if ( fi->si->short_stream_container != NULL && fi->si->ssat != NULL )
-	{
-		long ssat_index = dh.first_stream_sect;
-		unsigned long sector_offset = 0;
-
-		buf = ( char * )malloc( sizeof( char ) * dh.stream_length );
-		memset( buf, 0, sizeof( char ) * dh.stream_length );
-
-		unsigned long buf_offset = 0;
-		unsigned long bytes_to_read = 64;
-		while ( buf_offset < dh.stream_length )
-		{
-			// Stop processing and exit the thread.
-			if ( kill_thread == true )
-			{
-				free( buf );
-				return SC_QUIT;	// Quit silently. Don't do shared_info cleanup.
-			}
-
-			// The Short SAT should terminate with -2, but we shouldn't get here before the for loop completes.
-			if ( ssat_index < 0 )
-			{
-				if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "Invalid Short SAT termination index.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-				break;
-			}
-			
-			// Each index should be no greater than the size of the Short SAT array.
-			if ( ssat_index > ( long )( fi->si->num_ssat_sects * ( fi->si->sect_size / sizeof( long ) ) ) )
-			{
-				if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "Short SAT index out of bounds.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-				break;
-			}
-
-			sector_offset = ssat_index * 64;
-
-			if ( buf_offset + 64 > dh.stream_length )
-			{
-				bytes_to_read = dh.stream_length - buf_offset;
-			}
-
-			memcpy_s( buf + buf_offset, dh.stream_length - buf_offset, fi->si->short_stream_container + sector_offset, bytes_to_read );
-			buf_offset += bytes_to_read;
-
-			ssat_index = fi->si->ssat[ ssat_index ];
-		}
-	}
-
-	if ( buf != NULL && dh.stream_length > ( 2 * sizeof( unsigned short ) ) )
-	{
-		// 2 byte offset, 2 byte version, 4 bytes number of entries.
-		unsigned long offset = 0;
-		memcpy_s( &offset, sizeof( unsigned long ), buf, sizeof( unsigned short ) );
-		memcpy_s( &fi->si->version, sizeof( unsigned short ), buf + sizeof( unsigned short ), sizeof( unsigned short ) );
-
-		fileinfo *root_fi = fi;
-		fileinfo *last_fi = NULL;
-		wchar_t sid[ 32 ];
-
-		while ( offset < dh.stream_length )
-		{
-			// Stop processing and exit the thread.
-			if ( kill_thread == true )
-			{
-				free( buf );
-				return SC_QUIT;	// Quit silently. Don't do shared_info cleanup.
-			}
-
-			// We may have to scan the linked list for the next item. Reset it to the last item before the scan.
-			if ( fi == NULL )
-			{
-				if ( last_fi != NULL )
-				{
-					fi = last_fi;
-				}
-				else
-				{
-					break;	// If no last info was set, then we can't continue.
-				}
-			}
-
-			unsigned long entry_length = 0;
-			memcpy_s( &entry_length, sizeof( unsigned long ), buf + offset, sizeof( unsigned long ) );
-			offset += sizeof( long );
-			unsigned long entry_num = 0;
-			memcpy_s( &entry_num, sizeof( unsigned long ), buf + offset, sizeof( unsigned long ) );
-			offset += sizeof( long );
-			__int64 date_modified = 0;
-			memcpy_s( &date_modified, sizeof( __int64 ), buf + offset, 8 );
-			offset += sizeof( __int64 );
-
-			// It seems that version 4 databases have an additional value before the filename.
-			if ( fi->si->sect_size == 4096 )
-			{
-				unsigned long unknown = 0;	// Padding?
-				memcpy_s( &unknown, sizeof( unsigned long ), buf + offset, sizeof( unsigned long ) );
-				offset += sizeof( long );
-
-				entry_length -= sizeof( unsigned long );
-			}
-
-			unsigned long name_length = entry_length - 0x14;
-
-			if ( name_length > dh.stream_length )
-			{
-				free( buf );
-				if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "Invalid directory entry.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-				return SC_FAIL;
-			}
-
-			wchar_t *original_name = ( wchar_t * )malloc( name_length + sizeof( wchar_t ) );
-			wcsncpy_s( original_name, ( name_length + sizeof( wchar_t ) ) / sizeof( wchar_t ), ( wchar_t * )( buf + offset ), name_length / sizeof( wchar_t ) );
-
-			if ( fi != NULL )
-			{
-				// We need to verify that the entry number and sid match.
-				// The catalog entries generally appear to be in order, but the actual content in our linked list might not be. I've seen this in ehthumbs.db files.
-				swprintf_s( sid, 32, L"%u", ( fi->si->version == 1 ? entry_num * 10 : entry_num ) );	// The entry number needs to be multiplied by 10 if the version is 1.
-				reverse_string( sid );
-				if ( wcscmp( sid, fi->filename ) != 0 )
-				{
-					last_fi = fi;
-
-					// If we used a tree instead of a linked list, this would be much faster, but it's overkill since this isn't common.
-					fileinfo *temp_fi = root_fi;
-					while ( temp_fi != NULL )
-					{
-						if ( wcscmp( sid, temp_fi->filename ) == 0 )
-						{
-							fi = temp_fi;
-							break;
-						}
-
-						temp_fi = temp_fi->next;
-					}
-				}
-
-				fi->date_modified = date_modified;
-				free( fi->filename );
-				fi->filename = original_name;
-
-				// There's no documentation on this and it's difficult to find test cases. Anyone want to install Windows Me? I didn't think so.
-				// I can't refine this until I get test cases, but this should suffice for now.
-				switch ( fi->si->version )
-				{
-					case 4:	// 2000?
-					{
-						fi->si->system = 1;	// Me, 2000
-					}
-					break;
-
-					case 1: // Windows Media Center edition (XP, Vista, 7) has ehthumbs.db, ehthumbs_vista.db, Image.db, Video.db, etc. Are there version 1 databases not found on WMC systems?
-					case 5:	// XP - no SP?
-					case 6:	// XP - SP1?
-					case 7:	// XP - SP2+?
-					{
-						fi->si->system = 2;	// XP, 2003
-					}
-					break;
-
-					default:	// Fall back to our old method of detection.
-					{
-						// See if the filename contains a path. ":\" should be enough to signify a path.
-						if ( name_length > 2 && fi->filename[ 1 ] == L':' && fi->filename[ 2 ] == L'\\' )
-						{
-							fi->si->system = 1;	// Me, 2000
-						}
-						else
-						{
-							fi->si->system = 2;	// XP, 2003
-						}
-					}
-					break;
-				}
-
-				fi = fi->next;
-			}
-
-			offset += ( name_length + 4 );
-		}
-		
-		free( buf );
-	}
-
-	InvalidateRect( g_hWnd_list, NULL, TRUE );
-
-	return SC_OK;
-}
-
-// Save the short stream container for later lookup.
-// This is always located in the SAT.
-char cache_short_stream_container( HANDLE hFile, directory_header dh, shared_info *g_si )
-{
-	if ( g_si == NULL || ( g_si != NULL && g_si->sat == NULL ) )
-	{
-		return SC_FAIL;	// Fail silently. Don't do shared_info cleanup.
-	}
-
-	// Make sure we have a short stream container.
-	if ( dh.stream_length <= 0 || dh.first_stream_sect < 0 )
-	{
-		return SC_OK;
-	}
-
-	DWORD read = 0, total = 0;
-	long sat_index = dh.first_stream_sect; 
-	unsigned long sector_offset = g_si->sect_size + ( sat_index * g_si->sect_size );
-	unsigned long bytes_to_read = g_si->sect_size;
-
-	bool exit_cache = false;
-
-	g_si->short_stream_container = ( char * )malloc( sizeof( char ) * dh.stream_length );
-	memset( g_si->short_stream_container, 0, sizeof( char ) * dh.stream_length );
-
-	while ( total < dh.stream_length )
-	{
-		// Stop processing and exit the thread.
-		if ( kill_thread == true )
-		{
-			return SC_QUIT;	// Quit silently. Don't do shared_info cleanup.
-		}
-
-		// The SAT should terminate with -2, but we shouldn't get here before the for loop completes.
-		if ( sat_index < 0 )
-		{
-			if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "Invalid SAT termination index.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-			return SC_FAIL;
-		}
-		
-		// Each index should be no greater than the size of the SAT array.
-		if ( sat_index > ( long )( g_si->num_sat_sects * ( g_si->sect_size / sizeof( long ) ) ) )
-		{
-			if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "SAT index out of bounds.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-			exit_cache = true;
-		}
-
-		// Adjust the file pointer to the Short SAT
-		SetFilePointer( hFile, sector_offset, 0, FILE_BEGIN );
-
-		// Adjust the offset if we have a valid sat index.
-		if ( exit_cache == false )
-		{
-			sector_offset = g_si->sect_size + ( g_si->sat[ sat_index ] * g_si->sect_size );
-		}
-
-		if ( total + g_si->sect_size > dh.stream_length )
-		{
-			bytes_to_read = dh.stream_length - total;
-		}
-
-		ReadFile( hFile, g_si->short_stream_container + total, bytes_to_read, &read, NULL );
-		total += read;
-
-		if ( read < bytes_to_read )
-		{
-			if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "Premature end of file encountered while building the short stream container.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-			return SC_FAIL;
-		}
-
-		if ( exit_cache == true )
-		{
-			return SC_FAIL;
-		}
-
-		sat_index = g_si->sat[ sat_index ];
-	}
-
-	return SC_OK;
-}
-
-// Builds a list of directory entries.
-// This list is found by traversing the SAT.
-// The directory is stored as a red-black tree in the database, but we can simply iterate through it with a linked list.
-char build_directory( HANDLE hFile, shared_info *g_si )
-{
-	if ( g_si == NULL )
-	{
-		return SC_QUIT;
-	}
-	else if ( g_si != NULL && g_si->sat == NULL )
-	{
-		cleanup_shared_info( &g_si );
-
-		return SC_QUIT;
-	}
-
-	DWORD read = 0;
-	long sat_index = g_si->first_dir_sect;
-	unsigned long sector_offset = g_si->sect_size + ( sat_index * g_si->sect_size );
-	unsigned long sector_count = 0;
-
-	bool root_found = false;
-	directory_header root_dh = { 0 };
-
-	bool catalog_found = false;
-	directory_header catalog_dh = { 0 };
-
-	fileinfo *g_fi = NULL;
-	fileinfo *last_fi = NULL;
-
-	bool exit_build = false;
-
-	int item_count = SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 ); // We don't need to call this for each item.
-
-	// Save each directory sector from the SAT. The number of directory list sectors is not known for Version 3 databases.
-	while ( sector_count < ( g_si->num_sat_sects * ( g_si->sect_size / sizeof( long ) ) ) )
-	{
-		// Stop processing and exit the thread.
-		if ( kill_thread == true )
-		{
-			if ( g_fi == NULL )
-			{
-				cleanup_shared_info( &g_si );
-			}
-
-			return SC_QUIT;
-		}
-
-		// The directory list should terminate with -2.
-		if ( sat_index < 0 )
-		{
-			if ( sat_index == -2 )
-			{
-				if ( g_fi != NULL )
-				{
-					g_fi->si->system = 3;	// Assume the system is Vista/2008/7
-				}
-				else
-				{
-					if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "No entries were found.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-				}
-			}
-			else
-			{
-				if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "Invalid SAT termination index.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-			}
-
-			break;
-		}
-		
-		// Each index should be no greater than the size of the SAT array.
-		if ( sat_index > ( long )( g_si->num_sat_sects * ( g_si->sect_size / sizeof( long ) ) ) )
-		{
-			if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "SAT index out of bounds.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-			exit_build = true;
-		}
-
-		// Adjust the file pointer to the Short SAT
-		SetFilePointer( hFile, sector_offset, 0, FILE_BEGIN );
-
-		if ( exit_build == false )
-		{
-			sector_offset = g_si->sect_size + ( g_si->sat[ sat_index ] * g_si->sect_size );
-		}
-
-		// There are 4 directory items per 512 byte sector.
-		for ( int i = 0; i < ( g_si->sect_size / 128 ); i++ )
-		{
-			// Stop processing and exit the thread.
-			if ( kill_thread == true )
-			{
-				if ( g_fi == NULL )
-				{
-					cleanup_shared_info( &g_si );
-				}
-
-				return SC_QUIT;
-			}
-
-			directory_header dh;
-			ReadFile( hFile, &dh, sizeof( directory_header ), &read, NULL );
-
-			if ( read < sizeof( directory_header ) )
-			{
-				if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "Premature end of file encountered while building the directory.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-				exit_build = true;
-				break;
-			}
-
-			// Skip invalid entries.
-			if ( dh.entry_type == 0 )
-			{
-				continue;
-			}
-
-			if ( dh.entry_type == 5 )
-			{
-				root_dh = dh;			// Save the root entry
-				root_found = true;
-				continue;
-			}
-
-			if ( catalog_found == false && wcsncmp( dh.sid, L"Catalog", 32 ) == 0 )
-			{
-				catalog_dh = dh;		// Save the catalog entry
-				catalog_found = true;	// Short circuit the condition above.
-				continue;
-			}
-
-			// dh.create_time never seems to be set.
-			fileinfo *fi = ( fileinfo * )malloc( sizeof( fileinfo ) );
-			fi->filename = ( wchar_t * )malloc( sizeof( wchar_t ) * 32 );
-			wcsncpy_s( fi->filename, 32, dh.sid, 31 );
-			memcpy_s( &fi->date_modified, sizeof( __int64 ), dh.modify_time, 8 );
-			fi->offset = dh.first_stream_sect;
-			fi->size = dh.stream_length;
-			fi->entry_type = dh.entry_type;
-			fi->flag = 0;			// None set.
-			fi->si = g_si;
-			fi->si->version = 0;	// Unknown until/if we process a catalog entry.
-			fi->si->system = 0;		// Unknown until/if we process a catalog entry.
-			fi->si->count++;		// Increment the number of entries.
-			fi->next = NULL;
-			fi->entry_hash = 0;
-
-			// Store the fileinfo in the list (first in, first out)
-			if ( last_fi != NULL )
-			{
-				last_fi->next = fi;
-			}
-			else
-			{
-				g_fi = fi;
-			}
-			last_fi = fi;
-
-			// Insert a row into our listview.
-			LVITEM lvi = { NULL };
-			lvi.mask = LVIF_PARAM; // Our listview items will display the text contained the lParam value.
-			lvi.iItem = item_count++;
-			lvi.iSubItem = 0;
-			lvi.lParam = ( LPARAM )fi;
-			SendMessage( g_hWnd_list, LVM_INSERTITEM, 0, ( LPARAM )&lvi );
-		}
-
-		if ( exit_build == true )
-		{
-			break;
-		}
-
-		// Each index points to the next index.
-		sat_index = g_si->sat[ sat_index ];
-		++sector_count;	// Update the number of sectors we've traversed.
-	}
-
-	if ( g_fi != NULL )
-	{
-		if ( root_found == true )
-		{
-			if ( cache_short_stream_container( hFile, root_dh, g_si ) == SC_QUIT )
-			{
-				return SC_QUIT;	// Allow the main thread to do shared_info cleanup.
-			}
-		}
-
-		if ( catalog_found == true )
-		{
-			if ( update_catalog_entries( hFile, g_fi, catalog_dh ) == SC_QUIT )
-			{
-				return SC_QUIT;	// Allow the main thread to do shared_info cleanup.
-			}
-		}
-	}
-	else	// Free our shared info structure if no item was added to the list.
-	{
-		cleanup_shared_info( &g_si );
-	}
-
-	return SC_OK;
-}
-
-// Builds the Short SAT.
-// This table is found by traversing the SAT.
-char build_ssat( HANDLE hFile, shared_info *g_si )
-{
-	if ( g_si == NULL )
-	{
-		return SC_QUIT;
-	}
-	else if ( g_si != NULL && g_si->sat == NULL )
-	{
-		cleanup_shared_info( &g_si );
-
-		return SC_QUIT;
-	}
-
-	DWORD read = 0, total = 0;
-	long sat_index = g_si->first_ssat_sect;
-	unsigned long sector_offset = g_si->sect_size + ( sat_index * g_si->sect_size );
-
-	bool exit_build = false;
-
-	g_si->ssat = ( long * )malloc( ssat_size );
-	memset( g_si->ssat, -1, ssat_size );
-
-	// Save each sector from the SAT.
-	for ( unsigned long i = 0; i < g_si->num_ssat_sects; i++ )
-	{
-		// Stop processing and exit the thread.
-		if ( kill_thread == true )
-		{
-			cleanup_shared_info( &g_si );
-
-			return SC_QUIT;
-		}
-
-		// The Short SAT should terminate with -2, but we shouldn't get here before the for loop completes.
-		if ( sat_index < 0 )
-		{
-			if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "Invalid SAT termination index.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-			return SC_FAIL;
-		}
-		
-		// Each index should be no greater than the size of the SAT array.
-		if ( sat_index > ( long )( g_si->num_sat_sects * ( g_si->sect_size / sizeof( long ) ) ) )
-		{
-			if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "SAT index out of bounds.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-			exit_build = true;
-		}
-
-		// Adjust the file pointer to the Short SAT
-		SetFilePointer( hFile, sector_offset, 0, FILE_BEGIN );
-
-		if ( exit_build == false )
-		{
-			sector_offset = g_si->sect_size + ( g_si->sat[ sat_index ] * g_si->sect_size );
-		}
-
-		ReadFile( hFile, g_si->ssat + ( total / sizeof( long ) ), g_si->sect_size, &read, NULL );
-		total += read;
-
-		if ( read < g_si->sect_size )
-		{
-			if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "Premature end of file encountered while building the Short SAT.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-			return SC_FAIL;
-		}
-
-		if ( exit_build == true )
-		{
-			return SC_FAIL;
-		}
-
-		// Each index points to the next index.
-		sat_index = g_si->sat[ sat_index ];
-	}
-
-	return SC_OK;
-}
-
-// Builds the SAT.
-// We concatenate each sector listed in the MSAT to build the SAT.
-char build_sat( HANDLE hFile, shared_info *g_si )
-{
-	if ( g_si == NULL )
-	{
-		return SC_QUIT;
-	}
-
-	DWORD read = 0, total = 0;
-	unsigned long sector_offset = 0;
-
-	g_si->sat = ( long * )malloc( sat_size );
-	memset( g_si->sat, -1, sat_size );
-
-	// Save each sector in the Master SAT.
-	for ( unsigned long msat_index = 0; msat_index < g_si->num_sat_sects; msat_index++ )
-	{
-		// Stop processing and exit the thread.
-		if ( kill_thread == true )
-		{
-			cleanup_shared_info( &g_si );
-
-			return SC_QUIT;
-		}
-
-		// We shouldn't get here before the for loop completes.
-		if ( g_msat[ msat_index ] < 0 )
-		{
-			if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "Invalid Master SAT termination index.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-			return SC_FAIL;
-		}
-
-		// Adjust the file pointer to the SAT
-		sector_offset = g_si->sect_size + ( g_msat[ msat_index ] * g_si->sect_size );
-		SetFilePointer( hFile, sector_offset, 0, FILE_BEGIN );
-
-		ReadFile( hFile, g_si->sat + ( total / sizeof( long ) ), g_si->sect_size, &read, NULL );
-		total += read;
-
-		if ( read < g_si->sect_size )
-		{
-			if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "Premature end of file encountered while building the SAT.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-			return SC_FAIL;
-		}
-	}
-
-	return SC_OK;
-}
-
-// Builds the MSAT.
-// This is only used to build the SAT and nothing more.
-char build_msat( HANDLE hFile, shared_info *g_si )
-{
-	if ( g_si == NULL )
-	{
-		return SC_QUIT;
-	}
-
-	DWORD read = 0, total = 436;	// If the sector size is 4096 bytes, then the remaining 3585 bytes are filled with 0.
-	unsigned long last_sector = g_si->sect_size + ( g_si->first_dis_sect * g_si->sect_size );	// Offset to the next DISAT (double indirect sector allocation table)
-
-	g_msat = ( long * )malloc( msat_size );	// g_msat is freed in our read database function.
-	memset( g_msat, -1, msat_size );
-
-	// Set the file pionter to the beginning of the master sector allocation table.
-	SetFilePointer( hFile, 76, 0, FILE_BEGIN );
-
-	// The first MSAT (contained within the 512 byte header) is 436 bytes. Every other MSAT will be 512 or 4096 bytes.
-	ReadFile( hFile, g_msat, 436, &read, NULL );
-
-	if ( read < 436 )
-	{
-		if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "Premature end of file encountered while building the Master SAT.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-		return SC_FAIL;
-	}
-
-	// If there are DISATs, then we'll add them to the MSAT list.
-	for ( unsigned long i = 0; i < g_si->num_dis_sects; i++ )
-	{
-		// Stop processing and exit the thread.
-		if ( kill_thread == true )
-		{
-			cleanup_shared_info( &g_si );
-
-			return SC_QUIT;
-		}
-
-		SetFilePointer( hFile, last_sector, 0, FILE_BEGIN );
-
-		// Read the first 127 or 1023 SAT sectors (508 or 4092 bytes) in the DISAT.
-		ReadFile( hFile, g_msat + ( total / sizeof( long ) ), g_si->sect_size - sizeof( long ), &read, NULL );
-		total += read;
-
-		if ( read < g_si->sect_size - sizeof( long ) )
-		{
-			if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "Premature end of file encountered while building the Master SAT.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-			return SC_FAIL;
-		}
-
-		// Get the pointer to the next DISAT.
-		ReadFile( hFile, &last_sector, 4, &read, NULL );
-
-		if ( read < 4 )
-		{
-			if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "Premature end of file encountered while building the Master SAT.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-			return SC_FAIL;
-		}
-
-		// The last index in the DISAT contains a pointer to the next DISAT. That's assuming there's any more DISATs left.
-		last_sector = g_si->sect_size + ( last_sector * g_si->sect_size );
-	}
-
-	return SC_OK;
-}
-
-unsigned __stdcall read_database( void *pArguments )
-{
-	// This will block every other thread from entering until the first thread is complete.
-	// Protects our global variables.
-	EnterCriticalSection( &pe_cs );
-
-	in_thread = true;
-
-	Processing_Window( true );
-
-	pathinfo *pi = ( pathinfo * )pArguments;
-	if ( pi != NULL && pi->filepath != NULL )
-	{
-		int fname_length = 0;
-		wchar_t *fname = pi->filepath + pi->offset;
-
-		int filepath_length = wcslen( pi->filepath ) + 1;	// Include NULL character.
-		
-		bool construct_filepath = ( filepath_length > pi->offset && cmd_line == 0 ? false : true );
-
-		wchar_t *filepath = NULL;
-
-		// We're going to open each file in the path info.
-		do
-		{
-			// Stop processing and exit the thread.
-			if ( kill_thread == true )
-			{
-				break;
-			}
-
-			// Construct the filepath for each file.
-			if ( construct_filepath == true )
-			{
-				fname_length = wcslen( fname ) + 1;	// Include '\' character or NULL character
-
-				if ( cmd_line != 0 )
-				{
-					filepath = ( wchar_t * )malloc( sizeof( wchar_t ) * fname_length );
-					wcscpy_s( filepath, fname_length, fname );
-				}
-				else
-				{
-					filepath = ( wchar_t * )malloc( sizeof( wchar_t ) * ( filepath_length + fname_length ) );
-					swprintf_s( filepath, filepath_length + fname_length, L"%s\\%s", pi->filepath, fname );
-				}
-
-				// Move to the next file name.
-				fname += fname_length;
-			}
-			else	// Copy the filepath.
-			{
-				filepath = ( wchar_t * )malloc( sizeof( wchar_t ) * filepath_length );
-				wcscpy_s( filepath, filepath_length, pi->filepath );
-			}
-
-			// Attempt to open our database file.
-			HANDLE hFile = CreateFile( filepath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
-			if ( hFile != INVALID_HANDLE_VALUE )
-			{
-				DWORD read = 0;
-				LARGE_INTEGER f_size = { 0 };
-
-				database_header dh = { 0 };
-
-				// Get the header information for this database.
-				ReadFile( hFile, &dh, sizeof( database_header ), &read, NULL );
-
-				if ( read < sizeof( database_header ) )
-				{
-					CloseHandle( hFile );
-					free( filepath );
-
-					if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "Premature end of file encountered while reading the header.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-
-					continue;
-				}
-
-				// Make sure it's a thumbs database and the stucture was filled correctly.
-				if ( memcmp( dh.magic_identifier, "\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1", 8 ) != 0 )
-				{
-					CloseHandle( hFile );
-					free( filepath );
-
-					if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "The file is not a thumbs database.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-
-					continue;
-				}
-
-				// These values are the minimum at which we can multiply the sector size (512) and not go out of range.
-				if ( dh.num_sat_sects > 0x7FFFFF || dh.num_ssat_sects > 0x7FFFFF || dh.num_dis_sects > 0x810203 )
-				{
-					CloseHandle( hFile );
-					free( filepath );
-
-					if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "The total sector allocation table size is too large.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-
-					continue;
-				}
-
-				// The sector size is equivalent to the 2 to the power of sector_shift. Version 3 = 2^9 = 512. Version 4 = 2^12 = 4096. We'll default to 512 if it's not version 4.
-				unsigned short sect_size = ( dh.dll_version == 0x0004 && dh.sector_shift == 0x000C ? 4096 : 512 );
-
-				msat_size = sizeof( long ) * ( 109 + ( ( dh.num_dis_sects > 0 ? dh.num_dis_sects : 0 ) * ( ( sect_size / sizeof( long ) ) - 1 ) ) );
-				sat_size = ( dh.num_sat_sects > 0 ? dh.num_sat_sects : 0 ) * sect_size;
-				ssat_size = ( dh.num_ssat_sects > 0 ? dh.num_ssat_sects : 0 ) * sect_size;
-
-				GetFileSizeEx( hFile, &f_size );
-
-				// This is a simple check to make sure we don't allocate too much memory.
-				if ( ( msat_size + sat_size + ssat_size ) > f_size.QuadPart )
-				{
-					CloseHandle( hFile );
-					free( filepath );
-
-					if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "The total sector allocation table size exceeds the size of the database.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-
-					continue;
-				}
-
-				// This information is shared between entries within the database.
-				shared_info *si = ( shared_info * )malloc( sizeof( shared_info ) );
-				si->sat = NULL;
-				si->ssat = NULL;
-				si->short_stream_container = NULL;
-				si->count = 0;
-				si->sect_size = sect_size;
-				si->first_dir_sect = dh.first_dir_sect;
-				si->first_dis_sect = dh.first_dis_sect;
-				si->first_ssat_sect = dh.first_ssat_sect;
-				si->num_ssat_sects = dh.num_ssat_sects;
-				si->num_dis_sects = dh.num_dis_sects;
-				si->num_sat_sects = dh.num_sat_sects;
-				si->short_sect_cutoff = dh.short_sect_cutoff;
-				
-				wcscpy_s( si->dbpath, MAX_PATH, filepath );
-
-				// Short-circuit the remaining functions if the status code is quit. The functions must be called in this order.
-				if ( build_msat( hFile, si ) != SC_QUIT && build_sat( hFile, si ) != SC_QUIT && build_ssat( hFile, si ) != SC_QUIT && build_directory( hFile, si ) != SC_QUIT ){}
-
-				// We no longer need this table.
-				free( g_msat );
-
-				// Close the input file.
-				CloseHandle( hFile );
-			}
-			else
-			{
-				// If this occurs, then there's something wrong with the user's system.
-				if ( cmd_line != 2 ){ MessageBoxA( g_hWnd_main, "The database file failed to open.", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONWARNING ); }
-			}
-
-			// Free the old filepath.
-			free( filepath );
-		}
-		while ( construct_filepath == true && *fname != L'\0' );
-
-		// Save the files or a CSV if the user specified an output directory through the command-line.
-		if ( pi->output_path != NULL )
-		{
-			if ( pi->type == 0 )	// Save thumbnail images.
-			{
-				save_param *save_type = ( save_param * )malloc( sizeof( save_param ) );
-				save_type->type = 1;	// Build directory. It may not exist.
-				save_type->save_all = true;
-				save_type->filepath = pi->output_path;
-
-				// save_type is freed in the save_items thread.
-				CloseHandle( ( HANDLE )_beginthreadex( NULL, 0, &save_items, ( void * )save_type, 0, NULL ) );
-			}
-			else	// Save CSV.
-			{
-				// output_path is freed in save_csv.
-				CloseHandle( ( HANDLE )_beginthreadex( NULL, 0, &save_csv, ( void * )pi->output_path, 0, NULL ) );
-			}
-		}
-
-		free( pi->filepath );
-	}
-	else if ( pi != NULL )	// filepath == NULL
-	{
-		free( pi->output_path );	// Assume output_path is set.
-	}
-
-	free( pi );
-
-	Processing_Window( false );
-
-	// Release the semaphore if we're killing the thread.
-	if ( shutdown_semaphore != NULL )
-	{
-		ReleaseSemaphore( shutdown_semaphore, 1, NULL );
 	}
 
 	in_thread = false;

@@ -37,31 +37,20 @@
 #include <gdiplus.h>
 #include <process.h>
 
-#include "dllrbt.h"
-
 #include "resource.h"
 
 #define PROGRAM_CAPTION		L"Thumbs Viewer"
 #define PROGRAM_CAPTION_A	"Thumbs Viewer"
 
-#define MIN_WIDTH		480
-#define MIN_HEIGHT		320
+#define MIN_WIDTH			480
+#define MIN_HEIGHT			320
 
-#define MENU_OPEN		1001
-#define MENU_SAVE_ALL	1002
-#define MENU_SAVE_SEL	1003
-#define MENU_EXPORT		1004
-#define MENU_EXIT		1005
-#define MENU_ABOUT		1006
-#define MENU_SELECT_ALL	1007
-#define MENU_REMOVE_SEL	1008
-#define MENU_SCAN		1009
-
-#define SNAP_WIDTH		10		// The minimum distance at which our windows will attach together.
+#define NUM_COLUMNS			7
 
 #define WM_PROPAGATE		WM_APP		// Updates the scan window.
-#define WM_DESTROY_ALT		WM_APP		// Allows non-window threads to call DestroyWindow.
-#define WM_CHANGE_CURSOR	WM_APP + 1	// Updates the window cursor.
+#define WM_DESTROY_ALT		WM_APP + 1	// Allows non-window threads to call DestroyWindow.
+#define WM_CHANGE_CURSOR	WM_APP + 2	// Updates the window cursor.
+#define WM_ALERT			WM_APP + 3	// Called from threads to display a message box.
 
 // fileinfo flags.
 #define FIF_TYPE_JPG		1
@@ -69,48 +58,6 @@
 #define FIF_TYPE_PNG		4
 #define FIF_TYPE_UNKNOWN	8
 #define FIF_IN_TREE			16
-
-struct database_header
-{
-	char magic_identifier[ 8 ]; // {0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1} for current version, was {0x0e, 0x11, 0xfc, 0x0d, 0xd0, 0xcf, 0x11, 0xe0} on old, beta 2 files (late '92) 
-	char class_id[ 16 ];
-	unsigned short minor_version;
-	unsigned short dll_version;
-	unsigned short byte_order;	// Always 0xFFFE
-	unsigned short sector_shift;
-	unsigned short short_sect_shift;
-	unsigned short reserved_1;
-	unsigned long reserved_2;
-	unsigned long num_dir_sects;	// Not supported in Version 3 databases.
-	unsigned long num_sat_sects;
-	long first_dir_sect;
-	unsigned long transactioning_sig;
-	unsigned long short_sect_cutoff;
-	long first_ssat_sect;
-	unsigned long num_ssat_sects;
-	long first_dis_sect;
-	unsigned long num_dis_sects;
-};
-
-struct directory_header
-{
-	wchar_t sid[ 32 ];			// NULL terminated
-	unsigned short sid_length;
-	char entry_type;			// 0 = Invalid, 1 = Storage, 2 = Stream, 3 = Lock bytes, 4 = Property, 5 = Root
-	char node_color;			// 0 = Red, 1 = Black
-	long left_child;
-	long right_child;
-	long dir_id;
-	char clsid[ 16 ];
-	unsigned long user_flags;
-	
-	char create_time[ 8 ];
-	char modify_time[ 8 ];
-
-	long first_stream_sect;
-	unsigned long stream_length;		// Low order bits. Should be less than or equal to 0x80000000 for Version 3 databases.
-	unsigned long stream_length_high;	// High order bits.
-};
 
 // Holds shared variables among database entries.
 struct shared_info
@@ -176,24 +123,10 @@ struct save_param
 
 // Function prototypes
 LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam );
-
 LRESULT CALLBACK ImageWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam );
-VOID CALLBACK TimerProc( HWND hWnd, UINT msg, UINT idTimer, DWORD dwTime );
-
 LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam );
 
-unsigned __stdcall cleanup( void *pArguments );
-unsigned __stdcall read_database( void *pArguments );
-unsigned __stdcall remove_items( void *pArguments );
-unsigned __stdcall save_csv( void *pArguments );
-unsigned __stdcall save_items( void *pArguments );
-unsigned __stdcall scan_files( void *pArguments );
-char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset );
-Gdiplus::Image *create_image( char *buffer, unsigned long size, unsigned char format, unsigned int raw_width = 0, unsigned int raw_height = 0, unsigned int raw_size = 0, int raw_stride = 0 );
-bool is_close( int a, int b );
-void update_menus( bool disable_all );
-void cleanup_fileinfo_tree();
-void cleanup_shared_info( shared_info **si );
+VOID CALLBACK TimerProc( HWND hWnd, UINT msg, UINT idTimer, DWORD dwTime );
 
 // These are all variables that are shared among the separate .cpp files.
 
@@ -232,16 +165,12 @@ extern POINT old_pos;				// The old position of gdi_image. Used to calculate the
 
 extern float scale;					// Scale of the image.
 
-// Scan variables
-extern wchar_t g_filepath[];		// Path to the files and folders to scan.
-extern wchar_t extension_filter[];	// A list of extensions to filter from a file scan.
-extern bool include_folders;		// Include folders in a file scan.
-extern bool show_details;			// Show details in the scan window.
-extern dllrbt_tree *fileinfo_tree;	// Red-black tree of fileinfo structures.
+// List variables
+extern bool is_kbytes_size;			// Toggle the size text.
 
 // Thread variables
-extern bool kill_thread;			// Allow for a clean shutdown.
-extern bool kill_scan;				// Stop a file scan.
+extern bool g_kill_thread;			// Allow for a clean shutdown.
+extern bool g_kill_scan;			// Stop a file scan.
 
 extern bool in_thread;				// Flag to indicate that we're in a worker thread.
 extern bool skip_draw;				// Prevents WM_DRAWITEM from accessing listview items while we're removing them.
