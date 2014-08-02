@@ -182,6 +182,8 @@ unsigned __stdcall map_entries( void *pArguments )
 
 	traverse_directory( g_filepath );
 
+	cleanup_fileinfo_tree();
+
 	InvalidateRect( g_hWnd_list, NULL, TRUE );
 
 	// Update the details.
