@@ -57,7 +57,6 @@
 #define FIF_TYPE_CMYK_JPG	2
 #define FIF_TYPE_PNG		4
 #define FIF_TYPE_UNKNOWN	8
-#define FIF_IN_TREE			16
 
 // Holds shared variables among database entries.
 struct shared_info
