@@ -937,7 +937,7 @@ unsigned __stdcall save_csv( void *pArguments )
 				}
 
 				// See if the next entry can fit in the buffer. If it can't, then we dump the buffer.
-				if ( write_buf_offset + filename_length + dbpath_length + ( 10 * 10 ) + ( 20 * 1 ) + 26 + 30 > size )
+				if ( write_buf_offset + filename_length + dbpath_length + ( 10 * 10 ) + ( 20 * 1 ) + 26 + 30 + 1 > size )
 				{
 					// Dump the buffer.
 					WriteFile( hFile, write_buf, write_buf_offset, &write, NULL );
@@ -974,7 +974,7 @@ unsigned __stdcall save_csv( void *pArguments )
 				{
 					write_buf[ write_buf_offset++ ] = ',';
 				}
-				
+
 				write_buf_offset += sprintf_s( write_buf + write_buf_offset, size - write_buf_offset, "%s,\"%s\"",
 											   system_string,
 											   utf8_dbpath );
