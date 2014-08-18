@@ -57,10 +57,10 @@ void update_scan_info( unsigned long long hash, wchar_t *filepath )
 	if ( g_show_details == true )
 	{
 		SendMessage( g_hWnd_scan, WM_PROPAGATE, 3, ( LPARAM )filepath );
-		char buf[ 19 ] = { 0 };
-		sprintf_s( buf, 19, "0x%016llx", hash );
+		char buf[ 17 ] = { 0 };
+		sprintf_s( buf, 17, "%016llx", hash );
 		SendMessageA( g_hWnd_scan, WM_PROPAGATE, 4, ( LPARAM )buf );
-		sprintf_s( buf, 19, "%lu", file_count );
+		sprintf_s( buf, 17, "%lu", file_count );
 		SendMessageA( g_hWnd_scan, WM_PROPAGATE, 5, ( LPARAM )buf );
 	}
 }
