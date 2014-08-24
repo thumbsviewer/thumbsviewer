@@ -95,8 +95,8 @@ void traverse_directory( wchar_t *path )
 	}
 
 	// Set the file path to search for all files/folders in the current directory.
-	wchar_t filepath[ MAX_PATH ];
-	swprintf_s( filepath, MAX_PATH, L"%s\\*", path );
+	wchar_t filepath[ ( MAX_PATH * 2 ) + 2 ];
+	swprintf_s( filepath, ( MAX_PATH * 2 ) + 2, L"%.259s\\*", path );
 
 	WIN32_FIND_DATA FindFileData;
 	HANDLE hFind = FindFirstFileEx( ( LPCWSTR )filepath, FindExInfoStandard, &FindFileData, FindExSearchNameMatch, NULL, 0 );
@@ -115,15 +115,16 @@ void traverse_directory( wchar_t *path )
 				// Go through all directories except "." and ".." (current and parent)
 				if ( ( wcscmp( FindFileData.cFileName, L"." ) != 0 ) && ( wcscmp( FindFileData.cFileName, L".." ) != 0 ) )
 				{
-					// Move to the next directory.
-					swprintf_s( filepath, MAX_PATH, L"%s\\%s", path, FindFileData.cFileName );
-
-					traverse_directory( filepath );
-
-					// Only hash folders if enabled.
-					if ( g_include_folders == true )
+					// Move to the next directory. Limit the path length to MAX_PATH.
+					if ( swprintf_s( filepath, ( MAX_PATH * 2 ) + 2, L"%.259s\\%.259s", path, FindFileData.cFileName ) < MAX_PATH )
 					{
-						hash_file( filepath, FindFileData.cFileName );
+						traverse_directory( filepath );
+
+						// Only hash folders if enabled.
+						if ( g_include_folders == true )
+						{
+							hash_file( filepath, FindFileData.cFileName );
+						}
 					}
 				}
 			}
@@ -153,7 +154,7 @@ void traverse_directory( wchar_t *path )
 					free( temp_ext );
 				}
 
-				swprintf_s( filepath, MAX_PATH, L"%s\\%s", path, FindFileData.cFileName );
+				swprintf_s( filepath, ( MAX_PATH * 2 ) + 2, L"%.259s\\%.259s", path, FindFileData.cFileName );
 
 				hash_file( filepath, FindFileData.cFileName );
 			}
