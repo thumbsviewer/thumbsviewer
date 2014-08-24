@@ -1088,8 +1088,8 @@ unsigned __stdcall save_items( void *pArguments )
 				continue;
 			}
 
-			// Directory + backslash + filename + extension + NULL character = ( 2 * MAX_PATH ) + 6
-			wchar_t fullpath[ ( 2 * MAX_PATH ) + 6 ] = { 0 };
+			// Directory + backslash + filename + extension + NULL character = ( MAX_PATH * 2 ) + 6
+			wchar_t fullpath[ ( MAX_PATH * 2 ) + 6 ] = { 0 };
 
 			wchar_t *filename = get_filename_from_path( fi->filename, wcslen( fi->filename ) );
 
@@ -1099,11 +1099,11 @@ unsigned __stdcall save_items( void *pArguments )
 				// The extension in the filename might not be the actual type. So we'll append .jpg to the end of it.
 				if ( _wcsicmp( ext, L".jpg" ) == 0 || _wcsicmp( ext, L".jpeg" ) == 0 )
 				{
-					swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%.259s", save_directory, filename );
+					swprintf_s( fullpath, ( MAX_PATH * 2 ) + 6, L"%.259s\\%.259s", save_directory, filename );
 				}
 				else
 				{
-					swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%.259s.jpg", save_directory, filename );
+					swprintf_s( fullpath, ( MAX_PATH * 2 ) + 6, L"%.259s\\%.259s.jpg", save_directory, filename );
 				}
 			}
 			else if ( ( fi->flag & FIF_TYPE_PNG ) || ( ( fi->flag & FIF_TYPE_UNKNOWN ) && header_offset > 0 ) )
@@ -1112,16 +1112,16 @@ unsigned __stdcall save_items( void *pArguments )
 				// The extension in the filename might not be the actual type. So we'll append .png to the end of it.
 				if ( _wcsicmp( ext, L".png" ) == 0 )
 				{
-					swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%.259s", save_directory, filename );
+					swprintf_s( fullpath, ( MAX_PATH * 2 ) + 6, L"%.259s\\%.259s", save_directory, filename );
 				}
 				else
 				{
-					swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%.259s.png", save_directory, filename );
+					swprintf_s( fullpath, ( MAX_PATH * 2 ) + 6, L"%.259s\\%.259s.png", save_directory, filename );
 				}
 			}
 			else
 			{
-				swprintf_s( fullpath, ( 2 * MAX_PATH ) + 6, L"%s\\%.259s", save_directory, filename );
+				swprintf_s( fullpath, ( MAX_PATH * 2 ) + 6, L"%.259s\\%.259s", save_directory, filename );
 			}
 
 			// If we have a CMYK based JPEG, then we're going to have to convert it to RGB.
