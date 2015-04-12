@@ -1,6 +1,6 @@
 /*
     thumbs_viewer will extract thumbnail images from thumbs database files.
-    Copyright (C) 2011-2014 Eric Kutcher
+    Copyright (C) 2011-2015 Eric Kutcher
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -548,7 +548,7 @@ unsigned __stdcall copy_items( void *pArguments )
 				break;
 			}
 
-			if ( buf == NULL )
+			if ( buf == NULL || ( buf != NULL && buf[ 0 ] == NULL ) )
 			{
 				if ( j == 1 )
 				{
