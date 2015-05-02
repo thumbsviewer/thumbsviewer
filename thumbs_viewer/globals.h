@@ -140,6 +140,8 @@ extern CRITICAL_SECTION pe_cs;		// Allow only one read_database thread to be act
 
 extern HFONT hFont;					// Handle to the system's message font.
 
+extern int row_height;				// Height of our listview rows.
+
 extern HICON hIcon_jpg;				// Handle to the system's .jpg icon.
 extern HICON hIcon_png;				// Handle to the system's .png icon.
 

@@ -151,6 +151,9 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 			g_hWnd_list = CreateWindow( WC_LISTVIEW, NULL, LVS_REPORT | LVS_EDITLABELS | LVS_OWNERDRAWFIXED | WS_CHILDWINDOW | WS_VISIBLE, 0, 0, MIN_WIDTH, MIN_HEIGHT, hWnd, NULL, NULL, NULL );
 			SendMessage( g_hWnd_list, LVM_SETEXTENDEDLISTVIEWSTYLE, 0, LVS_EX_DOUBLEBUFFER | LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES );
 
+			// Make pretty font.
+			SendMessage( g_hWnd_list, WM_SETFONT, ( WPARAM )hFont, 0 );
+
 			// Allow drag and drop for the listview.
 			DragAcceptFiles( g_hWnd_list, TRUE );
 
@@ -349,7 +352,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 			// Set the row height of the list view.
 			if ( ( ( LPMEASUREITEMSTRUCT )lParam )->CtlType = ODT_LISTVIEW )
 			{
-				( ( LPMEASUREITEMSTRUCT )lParam )->itemHeight = GetSystemMetrics( SM_CYSMICON ) + 2;
+				( ( LPMEASUREITEMSTRUCT )lParam )->itemHeight = row_height;
 			}
 			return TRUE;
 		}
@@ -540,7 +543,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 					case MENU_ABOUT:
 					{
-						MessageBoxA( hWnd, "Thumbs Viewer is made free under the GPLv3 license.\r\n\r\nVersion 1.0.2.0\r\n\r\nCopyright \xA9 2011-2015 Eric Kutcher", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONINFORMATION );
+						MessageBoxA( hWnd, "Thumbs Viewer is made free under the GPLv3 license.\r\n\r\nVersion 1.0.2.1\r\n\r\nCopyright \xA9 2011-2015 Eric Kutcher", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONINFORMATION );
 					}
 					break;
 
@@ -986,7 +989,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 				wchar_t *buf = tbuf;
 
 				// This is the full size of the row.
-				RECT last_rc = { 0 };
+				RECT last_rc;
 
 				// This will keep track of the current colunn's left position.
 				int last_left = 0;
@@ -1091,7 +1094,6 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					// This will adjust the text to fit nicely into the rectangle.
 					last_rc.left = 5 + last_left;
 					last_rc.right = lvc.cx + last_left - 5;
-					last_rc.top += 2;
 
 					// Save the height and width of this region.
 					int width = last_rc.right - last_rc.left;
@@ -1133,11 +1135,11 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 						// Shadow color - black.
 						//SetTextColor( hdcMem, RGB( 0x00, 0x00, 0x00 ) );
-						//DrawText( hdcMem, buf, -1, &rc2, DT_NOPREFIX | DT_SINGLELINE | DT_END_ELLIPSIS | RIGHT_COLUMNS );
+						//DrawText( hdcMem, buf, -1, &rc2, DT_NOPREFIX | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | RIGHT_COLUMNS );
 
 						// White text.
 						SetTextColor( hdcMem, RGB( 0xFF, 0xFF, 0xFF ) );
-						DrawText( hdcMem, buf, -1, &rc, DT_NOPREFIX | DT_SINGLELINE | DT_END_ELLIPSIS | RIGHT_COLUMNS );
+						DrawText( hdcMem, buf, -1, &rc, DT_NOPREFIX | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | RIGHT_COLUMNS );
 
 						BitBlt( dis->hDC, dis->rcItem.left + last_rc.left, last_rc.top, width, height, hdcMem, 0, 0, SRCCOPY );
 					}
@@ -1150,11 +1152,11 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 						// Shadow color - light grey.
 						//SetTextColor( hdcMem, RGB( 0xE0, 0xE0, 0xE0 ) );
-						//DrawText( hdcMem, buf, -1, &rc2, DT_NOPREFIX | DT_SINGLELINE | DT_END_ELLIPSIS | RIGHT_COLUMNS );
+						//DrawText( hdcMem, buf, -1, &rc2, DT_NOPREFIX | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | RIGHT_COLUMNS );
 
 						// Black text.
 						SetTextColor( hdcMem, RGB( 0x00, 0x00, 0x00 ) );
-						DrawText( hdcMem, buf, -1, &rc, DT_NOPREFIX | DT_SINGLELINE | DT_END_ELLIPSIS | RIGHT_COLUMNS );
+						DrawText( hdcMem, buf, -1, &rc, DT_NOPREFIX | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | RIGHT_COLUMNS );
 
 						BitBlt( dis->hDC, dis->rcItem.left + last_rc.left, last_rc.top, width, height, hdcMem, 0, 0, SRCAND );
 					}
