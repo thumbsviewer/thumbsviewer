@@ -420,7 +420,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 						ofn.hwndOwner = hWnd;
 
 						// Display the Open File dialog box
-						if( GetOpenFileName( &ofn ) )
+						if ( GetOpenFileName( &ofn ) )
 						{
 							pi->offset = ofn.nFileOffset;
 							pi->output_path = NULL;
@@ -543,7 +543,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 					case MENU_ABOUT:
 					{
-						MessageBoxA( hWnd, "Thumbs Viewer is made free under the GPLv3 license.\r\n\r\nVersion 1.0.2.1\r\n\r\nCopyright \xA9 2011-2015 Eric Kutcher", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONINFORMATION );
+						MessageBoxA( hWnd, "Thumbs Viewer is made free under the GPLv3 license.\r\n\r\nVersion 1.0.2.2\r\n\r\nCopyright \xA9 2011-2015 Eric Kutcher", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONINFORMATION );
 					}
 					break;
 
@@ -1095,8 +1095,16 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					last_rc.left = 5 + last_left;
 					last_rc.right = lvc.cx + last_left - 5;
 
+					// Save the last left position of our column.
+					last_left += lvc.cx;
+
 					// Save the height and width of this region.
 					int width = last_rc.right - last_rc.left;
+					if ( width <= 0 )
+					{
+						continue;
+					}
+
 					int height = last_rc.bottom - last_rc.top;
 
 					// Normal text position.
@@ -1163,9 +1171,6 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 					// Delete our back buffer.
 					DeleteDC( hdcMem );
-
-					// Save the last left position of our column.
-					last_left += lvc.cx;
 				}
 			}
 			return TRUE;
