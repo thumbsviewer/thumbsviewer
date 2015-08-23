@@ -543,7 +543,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 					case MENU_ABOUT:
 					{
-						MessageBoxA( hWnd, "Thumbs Viewer is made free under the GPLv3 license.\r\n\r\nVersion 1.0.2.2\r\n\r\nCopyright \xA9 2011-2015 Eric Kutcher", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONINFORMATION );
+						MessageBoxA( hWnd, "Thumbs Viewer is made free under the GPLv3 license.\r\n\r\nVersion 1.0.2.3\r\n\r\nCopyright \xA9 2011-2015 Eric Kutcher", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONINFORMATION );
 					}
 					break;
 
