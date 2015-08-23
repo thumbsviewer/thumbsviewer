@@ -649,7 +649,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					if ( GetKeyState( VK_CONTROL ) & 0x8000 )
 					{
 						// Change the size column info.
-						if ( ( ( NMLISTVIEW * )lParam )->iSubItem == 2 )
+						if ( nmlv->iSubItem == 2 )
 						{
 							is_kbytes_size = !is_kbytes_size;
 							InvalidateRect( nmlv->hdr.hwndFrom, NULL, TRUE );
@@ -659,23 +659,23 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					{
 						LVCOLUMN lvc = { NULL };
 						lvc.mask = LVCF_FMT;
-						SendMessage( nmlv->hdr.hwndFrom, LVM_GETCOLUMN, ( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )&lvc );
+						SendMessage( nmlv->hdr.hwndFrom, LVM_GETCOLUMN, nmlv->iSubItem, ( LPARAM )&lvc );
 
 						if ( HDF_SORTUP & lvc.fmt )	// Column is sorted upward.
 						{
 							// Sort down
 							lvc.fmt = lvc.fmt & ( ~HDF_SORTUP ) | HDF_SORTDOWN;
-							SendMessage( nmlv->hdr.hwndFrom, LVM_SETCOLUMN, ( WPARAM )( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )&lvc );
+							SendMessage( nmlv->hdr.hwndFrom, LVM_SETCOLUMN, ( WPARAM )nmlv->iSubItem, ( LPARAM )&lvc );
 
-							SendMessage( nmlv->hdr.hwndFrom, LVM_SORTITEMS, ( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )( PFNLVCOMPARE )CompareFunc );
+							SendMessage( nmlv->hdr.hwndFrom, LVM_SORTITEMS, nmlv->iSubItem, ( LPARAM )( PFNLVCOMPARE )CompareFunc );
 						}
 						else if ( HDF_SORTDOWN & lvc.fmt )	// Column is sorted downward.
 						{
 							// Sort up
 							lvc.fmt = lvc.fmt & ( ~HDF_SORTDOWN ) | HDF_SORTUP;
-							SendMessage( nmlv->hdr.hwndFrom, LVM_SETCOLUMN, ( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )&lvc );
+							SendMessage( nmlv->hdr.hwndFrom, LVM_SETCOLUMN, nmlv->iSubItem, ( LPARAM )&lvc );
 
-							SendMessage( nmlv->hdr.hwndFrom, LVM_SORTITEMS, ( ( NMLISTVIEW * )lParam )->iSubItem + NUM_COLUMNS, ( LPARAM )( PFNLVCOMPARE )CompareFunc );
+							SendMessage( nmlv->hdr.hwndFrom, LVM_SORTITEMS, nmlv->iSubItem + NUM_COLUMNS, ( LPARAM )( PFNLVCOMPARE )CompareFunc );
 						}
 						else	// Column has no sorting set.
 						{
@@ -690,12 +690,12 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 							}
 
 							// Read current the format from the clicked column
-							SendMessage( nmlv->hdr.hwndFrom, LVM_GETCOLUMN, ( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )&lvc );
+							SendMessage( nmlv->hdr.hwndFrom, LVM_GETCOLUMN, nmlv->iSubItem, ( LPARAM )&lvc );
 							// Sort down to start.
 							lvc.fmt = lvc.fmt | HDF_SORTDOWN;
-							SendMessage( nmlv->hdr.hwndFrom, LVM_SETCOLUMN, ( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )&lvc );
+							SendMessage( nmlv->hdr.hwndFrom, LVM_SETCOLUMN, nmlv->iSubItem, ( LPARAM )&lvc );
 
-							SendMessage( nmlv->hdr.hwndFrom, LVM_SORTITEMS, ( ( NMLISTVIEW * )lParam )->iSubItem, ( LPARAM )( PFNLVCOMPARE )CompareFunc );
+							SendMessage( nmlv->hdr.hwndFrom, LVM_SORTITEMS, nmlv->iSubItem, ( LPARAM )( PFNLVCOMPARE )CompareFunc );
 						}
 					}
 				}
