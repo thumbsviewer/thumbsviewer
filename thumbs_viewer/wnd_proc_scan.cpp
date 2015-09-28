@@ -278,6 +278,8 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					bi.lpszTitle = L"Select a location to scan.";
 					bi.ulFlags = BIF_EDITBOX | BIF_VALIDATE;
 
+					OleInitialize( NULL );
+
 					LPITEMIDLIST lpiidl = SHBrowseForFolder( &bi );
 					if ( lpiidl )
 					{
@@ -288,6 +290,8 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 						SendMessage( g_hWnd_path, WM_SETTEXT, 0, ( LPARAM )scan_directory );
 					}
+
+					OleUninitialize();
 				}
 				break;
 

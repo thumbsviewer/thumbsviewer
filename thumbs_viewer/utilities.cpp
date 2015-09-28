@@ -161,7 +161,7 @@ void create_fileinfo_tree()
 	}
 
 	// Go through each item and add them to our tree.
-	for ( int i = 0; i < item_count; ++i )
+	for ( lvi.iItem = 0; lvi.iItem < item_count; ++lvi.iItem )
 	{
 		// We don't want to continue scanning if the user cancels the scan.
 		if ( g_kill_scan == true )
@@ -169,7 +169,6 @@ void create_fileinfo_tree()
 			break;
 		}
 
-		lvi.iItem = i;
 		SendMessage( g_hWnd_list, LVM_GETITEM, 0, ( LPARAM )&lvi );
 
 		fi = ( fileinfo * )lvi.lParam;
@@ -669,7 +668,7 @@ unsigned __stdcall remove_items( void *pArguments )
 	if ( item_count == sel_count )
 	{
 		// Go through each item, and free their lParam values. current_fileinfo will get deleted here.
-		for ( int i = 0; i < item_count; ++i )
+		for ( lvi.iItem = 0; lvi.iItem < item_count; ++lvi.iItem )
 		{
 			// Stop processing and exit the thread.
 			if ( g_kill_thread == true )
@@ -678,7 +677,6 @@ unsigned __stdcall remove_items( void *pArguments )
 			}
 
 			// We first need to get the lParam value otherwise the memory won't be freed.
-			lvi.iItem = i;
 			SendMessage( g_hWnd_list, LVM_GETITEM, 0, ( LPARAM )&lvi );
 
 			fi = ( fileinfo * )lvi.lParam;
@@ -872,7 +870,7 @@ unsigned __stdcall save_csv( void *pArguments )
 			fileinfo *fi = NULL;
 
 			// Go through all the items we'll be saving.
-			for ( int i = 0; i < save_items; ++i )
+			for ( lvi.iItem = 0; lvi.iItem < save_items; ++lvi.iItem )
 			{
 				// Stop processing and exit the thread.
 				if ( g_kill_thread == true )
@@ -880,7 +878,6 @@ unsigned __stdcall save_csv( void *pArguments )
 					break;
 				}
 
-				lvi.iItem = i;
 				SendMessage( g_hWnd_list, LVM_GETITEM, 0, ( LPARAM )&lvi );
 
 				fi = ( fileinfo * )lvi.lParam;

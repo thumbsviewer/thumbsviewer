@@ -94,7 +94,7 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 	wcex.hbrBackground  = ( HBRUSH )( COLOR_WINDOW );
 	wcex.lpszMenuName   = NULL;
 	wcex.lpszClassName  = L"thumbs";
-	wcex.hIconSm        = LoadIcon( wcex.hInstance, MAKEINTRESOURCE( IDI_APPLICATION ) );
+	wcex.hIconSm        = NULL;
 
 	if ( !RegisterClassEx( &wcex ) )
 	{
