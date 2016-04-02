@@ -1,6 +1,6 @@
 /*
     thumbs_viewer will extract thumbnail images from thumbs database files.
-    Copyright (C) 2011-2015 Eric Kutcher
+    Copyright (C) 2011-2016 Eric Kutcher
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -1090,35 +1090,62 @@ unsigned __stdcall save_items( void *pArguments )
 
 			wchar_t *filename = get_filename_from_path( fi->filename, wcslen( fi->filename ) );
 
-			if ( ( fi->flag & FIF_TYPE_JPG ) || ( fi->flag & FIF_TYPE_CMYK_JPG ) )
+			// Replace any invalid filename characters with an underscore "_".
+			wchar_t escaped_filename[ MAX_PATH ] = { 0 };
+			unsigned int escaped_filename_length = 0; 
+			while ( filename != NULL && *filename != NULL && escaped_filename_length < MAX_PATH )
 			{
-				wchar_t *ext = get_extension_from_filename( filename, wcslen( filename ) );
-				// The extension in the filename might not be the actual type. So we'll append .jpg to the end of it.
-				if ( _wcsicmp( ext, L".jpg" ) == 0 || _wcsicmp( ext, L".jpeg" ) == 0 )
+				if ( *filename == L'\\' ||
+					 *filename == L'/' ||
+					 *filename == L':' ||
+					 *filename == L'*' ||
+					 *filename == L'?' ||
+					 *filename == L'\"' ||
+					 *filename == L'<' ||
+					 *filename == L'>' ||
+					 *filename == L'|' )
 				{
-					swprintf_s( fullpath, ( MAX_PATH * 2 ) + 6, L"%.259s\\%.259s", save_directory, filename );
+					escaped_filename[ escaped_filename_length ] = L'_';
 				}
 				else
 				{
-					swprintf_s( fullpath, ( MAX_PATH * 2 ) + 6, L"%.259s\\%.259s.jpg", save_directory, filename );
+					escaped_filename[ escaped_filename_length ] = *filename;
+				}
+
+				++escaped_filename_length;
+				++filename;
+			}
+			escaped_filename[ escaped_filename_length ] = 0;	// Sanity.
+
+			if ( ( fi->flag & FIF_TYPE_JPG ) || ( fi->flag & FIF_TYPE_CMYK_JPG ) )
+			{
+				wchar_t *ext = get_extension_from_filename( escaped_filename, escaped_filename_length );
+				// The extension in the filename might not be the actual type. So we'll append .jpg to the end of it.
+				if ( _wcsicmp( ext, L".jpg" ) == 0 || _wcsicmp( ext, L".jpeg" ) == 0 )
+				{
+					swprintf_s( fullpath, ( MAX_PATH * 2 ) + 6, L"%.259s\\%.259s", save_directory, escaped_filename );
+				}
+				else
+				{
+					swprintf_s( fullpath, ( MAX_PATH * 2 ) + 6, L"%.259s\\%.259s.jpg", save_directory, escaped_filename );
 				}
 			}
 			else if ( ( fi->flag & FIF_TYPE_PNG ) || ( ( fi->flag & FIF_TYPE_UNKNOWN ) && header_offset > 0 ) )
 			{
-				wchar_t *ext = get_extension_from_filename( filename, wcslen( filename ) );
+				wchar_t *ext = get_extension_from_filename( escaped_filename, escaped_filename_length );
 				// The extension in the filename might not be the actual type. So we'll append .png to the end of it.
 				if ( _wcsicmp( ext, L".png" ) == 0 )
 				{
-					swprintf_s( fullpath, ( MAX_PATH * 2 ) + 6, L"%.259s\\%.259s", save_directory, filename );
+					swprintf_s( fullpath, ( MAX_PATH * 2 ) + 6, L"%.259s\\%.259s", save_directory, escaped_filename );
 				}
 				else
 				{
-					swprintf_s( fullpath, ( MAX_PATH * 2 ) + 6, L"%.259s\\%.259s.png", save_directory, filename );
+					swprintf_s( fullpath, ( MAX_PATH * 2 ) + 6, L"%.259s\\%.259s.png", save_directory, escaped_filename );
 				}
 			}
 			else
 			{
-				swprintf_s( fullpath, ( MAX_PATH * 2 ) + 6, L"%.259s\\%.259s", save_directory, filename );
+				swprintf_s( fullpath, ( MAX_PATH * 2 ) + 6, L"%.259s\\%.259s", save_directory, escaped_filename );
 			}
 
 			// If we have a CMYK based JPEG, then we're going to have to convert it to RGB.
