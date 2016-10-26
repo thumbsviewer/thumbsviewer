@@ -77,7 +77,7 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 				// Adjust the file pointer to the Short SAT
 				SetFilePointer( hFile, sector_offset, 0, FILE_BEGIN );
 
-				if ( exit_extract == false )
+				if ( !exit_extract )
 				{
 					sector_offset = fi->si->sect_size + ( fi->si->sat[ sat_index ] * fi->si->sect_size );
 				}
@@ -96,7 +96,7 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 					break;
 				}
 
-				if ( exit_extract == true )
+				if ( exit_extract )
 				{
 					break;
 				}
@@ -296,7 +296,7 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh )
 		while ( total < dh.stream_length )
 		{
 			// Stop processing and exit the thread.
-			if ( g_kill_thread == true )
+			if ( g_kill_thread )
 			{
 				free( buf );
 				return SC_QUIT;	// Quit silently. Don't do shared_info cleanup.
@@ -319,7 +319,7 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh )
 			// Adjust the file pointer to the SAT
 			SetFilePointer( hFile, sector_offset, 0, FILE_BEGIN );
 
-			if ( exit_update == false )
+			if ( !exit_update )
 			{
 				sector_offset = fi->si->sect_size + ( fi->si->sat[ sat_index ] * fi->si->sect_size );
 			}
@@ -338,7 +338,7 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh )
 				break;
 			}
 
-			if ( exit_update == true )
+			if ( exit_update )
 			{
 				break;
 			}
@@ -359,7 +359,7 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh )
 		while ( buf_offset < dh.stream_length )
 		{
 			// Stop processing and exit the thread.
-			if ( g_kill_thread == true )
+			if ( g_kill_thread )
 			{
 				free( buf );
 				return SC_QUIT;	// Quit silently. Don't do shared_info cleanup.
@@ -407,7 +407,7 @@ char update_catalog_entries( HANDLE hFile, fileinfo *fi, directory_header dh )
 		while ( offset < dh.stream_length )
 		{
 			// Stop processing and exit the thread.
-			if ( g_kill_thread == true )
+			if ( g_kill_thread )
 			{
 				free( buf );
 				return SC_QUIT;	// Quit silently. Don't do shared_info cleanup.
@@ -562,7 +562,7 @@ char cache_short_stream_container( HANDLE hFile, directory_header dh, shared_inf
 	while ( total < dh.stream_length )
 	{
 		// Stop processing and exit the thread.
-		if ( g_kill_thread == true )
+		if ( g_kill_thread )
 		{
 			return SC_QUIT;	// Quit silently. Don't do shared_info cleanup.
 		}
@@ -585,7 +585,7 @@ char cache_short_stream_container( HANDLE hFile, directory_header dh, shared_inf
 		SetFilePointer( hFile, sector_offset, 0, FILE_BEGIN );
 
 		// Adjust the offset if we have a valid sat index.
-		if ( exit_cache == false )
+		if ( !exit_cache )
 		{
 			sector_offset = g_si->sect_size + ( g_si->sat[ sat_index ] * g_si->sect_size );
 		}
@@ -604,7 +604,7 @@ char cache_short_stream_container( HANDLE hFile, directory_header dh, shared_inf
 			return SC_FAIL;
 		}
 
-		if ( exit_cache == true )
+		if ( exit_cache )
 		{
 			return SC_FAIL;
 		}
@@ -653,7 +653,7 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 	while ( sector_count < ( g_si->num_sat_sects * ( g_si->sect_size / sizeof( long ) ) ) )
 	{
 		// Stop processing and exit the thread.
-		if ( g_kill_thread == true )
+		if ( g_kill_thread )
 		{
 			if ( g_fi == NULL )
 			{
@@ -695,7 +695,7 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 		// Adjust the file pointer to the Short SAT
 		SetFilePointer( hFile, sector_offset, 0, FILE_BEGIN );
 
-		if ( exit_build == false )
+		if ( !exit_build )
 		{
 			sector_offset = g_si->sect_size + ( g_si->sat[ sat_index ] * g_si->sect_size );
 		}
@@ -704,7 +704,7 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 		for ( int i = 0; i < ( g_si->sect_size / 128 ); i++ )
 		{
 			// Stop processing and exit the thread.
-			if ( g_kill_thread == true )
+			if ( g_kill_thread )
 			{
 				if ( g_fi == NULL )
 				{
@@ -737,7 +737,7 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 				continue;
 			}
 
-			if ( catalog_found == false && wcsncmp( dh.sid, L"Catalog", 32 ) == 0 )
+			if ( !catalog_found && wcsncmp( dh.sid, L"Catalog", 32 ) == 0 )
 			{
 				catalog_dh = dh;		// Save the catalog entry
 				catalog_found = true;	// Short circuit the condition above.
@@ -780,7 +780,7 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 			SendMessage( g_hWnd_list, LVM_INSERTITEM, 0, ( LPARAM )&lvi );
 		}
 
-		if ( exit_build == true )
+		if ( exit_build )
 		{
 			break;
 		}
@@ -792,7 +792,7 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 
 	if ( g_fi != NULL )
 	{
-		if ( root_found == true )
+		if ( root_found )
 		{
 			if ( cache_short_stream_container( hFile, root_dh, g_si ) == SC_QUIT )
 			{
@@ -800,7 +800,7 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 			}
 		}
 
-		if ( catalog_found == true )
+		if ( catalog_found )
 		{
 			if ( update_catalog_entries( hFile, g_fi, catalog_dh ) == SC_QUIT )
 			{
@@ -844,7 +844,7 @@ char build_ssat( HANDLE hFile, shared_info *g_si )
 	for ( unsigned long i = 0; i < g_si->num_ssat_sects; i++ )
 	{
 		// Stop processing and exit the thread.
-		if ( g_kill_thread == true )
+		if ( g_kill_thread )
 		{
 			cleanup_shared_info( &g_si );
 
@@ -868,7 +868,7 @@ char build_ssat( HANDLE hFile, shared_info *g_si )
 		// Adjust the file pointer to the Short SAT
 		SetFilePointer( hFile, sector_offset, 0, FILE_BEGIN );
 
-		if ( exit_build == false )
+		if ( !exit_build )
 		{
 			sector_offset = g_si->sect_size + ( g_si->sat[ sat_index ] * g_si->sect_size );
 		}
@@ -882,7 +882,7 @@ char build_ssat( HANDLE hFile, shared_info *g_si )
 			return SC_FAIL;
 		}
 
-		if ( exit_build == true )
+		if ( exit_build )
 		{
 			return SC_FAIL;
 		}
@@ -913,7 +913,7 @@ char build_sat( HANDLE hFile, shared_info *g_si )
 	for ( unsigned long msat_index = 0; msat_index < g_si->num_sat_sects; msat_index++ )
 	{
 		// Stop processing and exit the thread.
-		if ( g_kill_thread == true )
+		if ( g_kill_thread )
 		{
 			cleanup_shared_info( &g_si );
 
@@ -975,7 +975,7 @@ char build_msat( HANDLE hFile, shared_info *g_si )
 	for ( unsigned long i = 0; i < g_si->num_dis_sects; i++ )
 	{
 		// Stop processing and exit the thread.
-		if ( g_kill_thread == true )
+		if ( g_kill_thread )
 		{
 			cleanup_shared_info( &g_si );
 
@@ -1036,13 +1036,13 @@ unsigned __stdcall read_thumbs( void *pArguments )
 		do
 		{
 			// Stop processing and exit the thread.
-			if ( g_kill_thread == true )
+			if ( g_kill_thread )
 			{
 				break;
 			}
 
 			// Construct the filepath for each file.
-			if ( construct_filepath == true )
+			if ( construct_filepath )
 			{
 				fname_length = wcslen( fname ) + 1;	// Include '\' character or NULL character
 
@@ -1165,7 +1165,7 @@ unsigned __stdcall read_thumbs( void *pArguments )
 			// Free the old filepath.
 			free( filepath );
 		}
-		while ( construct_filepath == true && *fname != L'\0' );
+		while ( construct_filepath && *fname != L'\0' );
 
 		// Save the files or a CSV if the user specified an output directory through the command-line.
 		if ( pi->output_path != NULL )

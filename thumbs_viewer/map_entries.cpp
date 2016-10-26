@@ -54,7 +54,7 @@ void update_scan_info( unsigned long long hash, wchar_t *filepath )
 	++file_count; 
 
 	// Update our scan window with new scan information.
-	if ( g_show_details == true )
+	if ( g_show_details )
 	{
 		SendMessage( g_hWnd_scan, WM_PROPAGATE, 3, ( LPARAM )filepath );
 		char buf[ 17 ] = { 0 };
@@ -89,7 +89,7 @@ void hash_file( wchar_t *filepath, wchar_t *filename )
 void traverse_directory( wchar_t *path )
 {
 	// We don't want to continue scanning if the user cancels the scan.
-	if ( g_kill_scan == true )
+	if ( g_kill_scan )
 	{
 		return;
 	}
@@ -104,7 +104,7 @@ void traverse_directory( wchar_t *path )
 	{
 		do
 		{
-			if ( g_kill_scan == true )
+			if ( g_kill_scan )
 			{
 				break;	// We need to close the find file handle.
 			}
@@ -121,7 +121,7 @@ void traverse_directory( wchar_t *path )
 						traverse_directory( filepath );
 
 						// Only hash folders if enabled.
-						if ( g_include_folders == true )
+						if ( g_include_folders )
 						{
 							hash_file( filepath, FindFileData.cFileName );
 						}
@@ -188,7 +188,7 @@ unsigned __stdcall map_entries( void *pArguments )
 	InvalidateRect( g_hWnd_list, NULL, TRUE );
 
 	// Update the details.
-	if ( g_show_details == false )
+	if ( !g_show_details )
 	{
 		char msg[ 11 ] = { 0 };
 		sprintf_s( msg, 11, "%lu", file_count );

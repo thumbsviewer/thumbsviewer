@@ -185,7 +185,7 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 				case IDOK:
 				case BTN_SCAN:
 				{
-					if ( g_kill_scan == false )
+					if ( !g_kill_scan )
 					{
 						EnableWindow( g_hWnd_btn_scan, FALSE );
 						g_kill_scan = true;
@@ -242,7 +242,7 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					g_show_details = !g_show_details;
 
 					// Hiding the details will allow for a faster scan since it doesn't have to update our controls.
-					if ( g_show_details == true )
+					if ( g_show_details )
 					{
 						SendMessageA( g_hWnd_btn_details, WM_SETTEXT, 0, ( LPARAM )"Hide Details \xAB" );
 						ShowWindow( g_hWnd_static3, SW_SHOW );
@@ -266,7 +266,7 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					// Adjust the window height.
 					RECT rc;
 					GetWindowRect( hWnd, &rc );
-					SetWindowPos( hWnd, NULL, 0, 0, rc.right - rc.left, MIN_HEIGHT - ( g_show_details == true ? 45 : 135 ), SWP_NOMOVE );
+					SetWindowPos( hWnd, NULL, 0, 0, rc.right - rc.left, MIN_HEIGHT - ( g_show_details ? 45 : 135 ), SWP_NOMOVE );
 				}
 				break;
 
@@ -335,8 +335,8 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 		{
 			// Set the minimum dimensions that the window can be sized to.
 			( ( MINMAXINFO * )lParam )->ptMinTrackSize.x = MIN_WIDTH;
-			( ( MINMAXINFO * )lParam )->ptMinTrackSize.y = MIN_HEIGHT - ( g_show_details == true ? 45 : 135 );
-			( ( MINMAXINFO * )lParam )->ptMaxTrackSize.y = MIN_HEIGHT - ( g_show_details == true ? 45 : 135 );
+			( ( MINMAXINFO * )lParam )->ptMinTrackSize.y = MIN_HEIGHT - ( g_show_details ? 45 : 135 );
+			( ( MINMAXINFO * )lParam )->ptMaxTrackSize.y = MIN_HEIGHT - ( g_show_details ? 45 : 135 );
 
 			return 0;
 		}
@@ -347,7 +347,7 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 			// 0 = inactive, > 0 = active
 			g_hWnd_active = ( wParam == 0 ? NULL : hWnd );
 
-            return FALSE;
+			return FALSE;
 		}
 		break;
 
@@ -360,6 +360,8 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 			SetForegroundWindow( g_hWnd_main );
 
 			ShowWindow( hWnd, SW_HIDE );
+
+			return 0;
 		}
 		break;
 
@@ -386,7 +388,7 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 			else if ( wParam == 2 )
 			{
 				// Clear the current file info if we finished the scan without stopping.
-				if ( g_kill_scan == false )
+				if ( !g_kill_scan )
 				{
 					SendMessage( g_hWnd_hashing, WM_SETTEXT, 0, 0 );
 					SendMessageA( g_hWnd_static_hash, WM_SETTEXT, 0, 0 );
