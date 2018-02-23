@@ -1,19 +1,19 @@
 /*
-    thumbs_viewer will extract thumbnail images from thumbs database files.
-    Copyright (C) 2011-2016 Eric Kutcher
+	thumbs_viewer will extract thumbnail images from thumbs database files.
+	Copyright (C) 2011-2018 Eric Kutcher
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+	This program is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+	You should have received a copy of the GNU General Public License
+	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include "globals.h"
@@ -97,7 +97,7 @@ void reverse_string( wchar_t *string )
 		return;
 	}
 
-	int end = wcslen( string ) - 1;
+	int end = ( int )wcslen( string ) - 1;
 	int start = 0;
 
 	while ( start < end )
@@ -152,7 +152,7 @@ void create_fileinfo_tree()
 
 	fileinfo *fi = NULL;
 
-	int item_count = SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 );
+	int item_count = ( int )SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 );
 
 	// Create the fileinfo tree if it doesn't exist.
 	if ( fileinfo_tree == NULL )
@@ -181,7 +181,7 @@ void create_fileinfo_tree()
 
 			if ( filename != NULL )
 			{
-				int filename_length = wcslen( filename + 1 );
+				int filename_length = ( int )wcslen( filename + 1 );
 				if ( filename_length <= 16 && filename_length >= 0 )
 				{
 					fi->entry_hash = _wcstoui64( filename + 1, NULL, 16 );
@@ -413,8 +413,8 @@ unsigned __stdcall copy_items( void *pArguments )
 	lvi.mask = LVIF_PARAM;
 	lvi.iItem = -1;	// Set this to -1 so that the LVM_GETNEXTITEM call can go through the list correctly.
 
-	int item_count = SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 );
-	int sel_count = SendMessage( g_hWnd_list, LVM_GETSELECTEDCOUNT, 0, 0 );
+	int item_count = ( int )SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 );
+	int sel_count = ( int )SendMessage( g_hWnd_list, LVM_GETSELECTEDCOUNT, 0, 0 );
 	
 	bool copy_all = false;
 	if ( item_count == sel_count )
@@ -453,7 +453,7 @@ unsigned __stdcall copy_items( void *pArguments )
 		}
 		else
 		{
-			lvi.iItem = SendMessage( g_hWnd_list, LVM_GETNEXTITEM, lvi.iItem, LVNI_SELECTED );
+			lvi.iItem = ( int )SendMessage( g_hWnd_list, LVM_GETNEXTITEM, lvi.iItem, LVNI_SELECTED );
 		}
 
 		SendMessage( g_hWnd_list, LVM_GETITEM, 0, ( LPARAM )&lvi );
@@ -474,7 +474,7 @@ unsigned __stdcall copy_items( void *pArguments )
 				case 1:
 				{
 					buf = fi->filename;
-					value_length = ( buf != NULL ? wcslen( buf ) : 0 );
+					value_length = ( buf != NULL ? ( int )wcslen( buf ) : 0 );
 				}
 				break;
 
@@ -542,7 +542,7 @@ unsigned __stdcall copy_items( void *pArguments )
 				case 6:
 				{
 					buf = fi->si->dbpath;
-					value_length = wcslen( buf );
+					value_length = ( int )wcslen( buf );
 				}
 				break;
 			}
@@ -661,8 +661,8 @@ unsigned __stdcall remove_items( void *pArguments )
 
 	fileinfo *fi = NULL;
 
-	int item_count = SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 );
-	int sel_count = SendMessage( g_hWnd_list, LVM_GETSELECTEDCOUNT, 0, 0 );
+	int item_count = ( int )SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 );
+	int sel_count = ( int )SendMessage( g_hWnd_list, LVM_GETSELECTEDCOUNT, 0, 0 );
 
 	// See if we've selected all the items. We can clear the list much faster this way.
 	if ( item_count == sel_count )
@@ -717,7 +717,7 @@ unsigned __stdcall remove_items( void *pArguments )
 		// Create an index list of selected items (in reverse order).
 		for ( int i = 0; i < sel_count; i++ )
 		{
-			lvi.iItem = index_array[ sel_count - 1 - i ] = SendMessage( g_hWnd_list, LVM_GETNEXTITEM, lvi.iItem, LVNI_SELECTED );
+			lvi.iItem = index_array[ sel_count - 1 - i ] = ( int )SendMessage( g_hWnd_list, LVM_GETNEXTITEM, lvi.iItem, LVNI_SELECTED );
 		}
 
 		for ( int i = 0; i < sel_count; i++ )
@@ -861,7 +861,7 @@ unsigned __stdcall save_csv( void *pArguments )
 			WriteFile( hFile, "\xEF\xBB\xBF" "Filename,Entry Size (bytes),Sector Index,Date Modified (UTC),FILETIME,System,Location", 88, &write, NULL );
 
 			// Get the number of items we'll be saving.
-			int save_items = SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 );
+			int save_items = ( int )SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 );
 
 			// Retrieve the lParam value from the selected listview item.
 			LVITEM lvi = { NULL };
@@ -1050,7 +1050,7 @@ unsigned __stdcall save_items( void *pArguments )
 		}
 
 		// Depending on what was selected, get the number of items we'll be saving.
-		int save_items = ( save_type->save_all ? SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 ) : SendMessage( g_hWnd_list, LVM_GETSELECTEDCOUNT, 0, 0 ) );
+		int save_items = ( save_type->save_all ? ( int )SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 ) : ( int )SendMessage( g_hWnd_list, LVM_GETSELECTEDCOUNT, 0, 0 ) );
 
 		// Retrieve the lParam value from the selected listview item.
 		LVITEM lvi = { NULL };
@@ -1068,7 +1068,7 @@ unsigned __stdcall save_items( void *pArguments )
 				break;
 			}
 
-			lvi.iItem = ( save_type->save_all ? i : SendMessage( g_hWnd_list, LVM_GETNEXTITEM, lvi.iItem, LVNI_SELECTED ) );
+			lvi.iItem = ( save_type->save_all ? i : ( int )SendMessage( g_hWnd_list, LVM_GETNEXTITEM, lvi.iItem, LVNI_SELECTED ) );
 			SendMessage( g_hWnd_list, LVM_GETITEM, 0, ( LPARAM )&lvi );
 
 			fi = ( fileinfo * )lvi.lParam;
@@ -1088,7 +1088,7 @@ unsigned __stdcall save_items( void *pArguments )
 			// Directory + backslash + filename + extension + NULL character = ( MAX_PATH * 2 ) + 6
 			wchar_t fullpath[ ( MAX_PATH * 2 ) + 6 ] = { 0 };
 
-			wchar_t *filename = get_filename_from_path( fi->filename, wcslen( fi->filename ) );
+			wchar_t *filename = get_filename_from_path( fi->filename, ( unsigned long )wcslen( fi->filename ) );
 
 			// Replace any invalid filename characters with an underscore "_".
 			wchar_t escaped_filename[ MAX_PATH ] = { 0 };

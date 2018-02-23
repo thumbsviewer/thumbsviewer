@@ -1,19 +1,19 @@
 /*
-    thumbs_viewer will extract thumbnail images from thumbs database files.
-    Copyright (C) 2011-2016 Eric Kutcher
+	thumbs_viewer will extract thumbnail images from thumbs database files.
+	Copyright (C) 2011-2018 Eric Kutcher
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+	This program is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+	You should have received a copy of the GNU General Public License
+	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include "globals.h"
@@ -192,7 +192,7 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 						break;
 					}
 
-					int length = SendMessage( g_hWnd_path, WM_GETTEXT, MAX_PATH, ( LPARAM )g_filepath );
+					int length = ( int )SendMessage( g_hWnd_path, WM_GETTEXT, MAX_PATH, ( LPARAM )g_filepath );
 					if ( length >= 3 )
 					{
 						// We need to have at least the drive path. Example: "C:\"
@@ -205,7 +205,7 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 							}
 
 							// Now get our extension filters.
-							length = SendMessage( g_hWnd_extensions, WM_GETTEXT, MAX_PATH, ( LPARAM )( g_extension_filter + 1 ) );
+							length = ( int )SendMessage( g_hWnd_extensions, WM_GETTEXT, MAX_PATH, ( LPARAM )( g_extension_filter + 1 ) );
 							if ( length > 0 )
 							{
 								g_extension_filter[ 0 ] = L'|';				// Append the delimiter to the beginning of the string.

@@ -1,19 +1,19 @@
 /*
-    thumbs_viewer will extract thumbnail images from thumbs database files.
-    Copyright (C) 2011-2016 Eric Kutcher
+	thumbs_viewer will extract thumbnail images from thumbs database files.
+	Copyright (C) 2011-2018 Eric Kutcher
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+	This program is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+	You should have received a copy of the GNU General Public License
+	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include "read_thumbs.h"
@@ -647,7 +647,7 @@ char build_directory( HANDLE hFile, shared_info *g_si )
 
 	bool exit_build = false;
 
-	int item_count = SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 ); // We don't need to call this for each item.
+	int item_count = ( int )SendMessage( g_hWnd_list, LVM_GETITEMCOUNT, 0, 0 ); // We don't need to call this for each item.
 
 	// Save each directory sector from the SAT. The number of directory list sectors is not known for Version 3 databases.
 	while ( sector_count < ( g_si->num_sat_sects * ( g_si->sect_size / sizeof( long ) ) ) )
@@ -1026,7 +1026,7 @@ unsigned __stdcall read_thumbs( void *pArguments )
 		int fname_length = 0;
 		wchar_t *fname = pi->filepath + pi->offset;
 
-		int filepath_length = wcslen( pi->filepath ) + 1;	// Include NULL character.
+		int filepath_length = ( int )wcslen( pi->filepath ) + 1;	// Include NULL character.
 		
 		bool construct_filepath = ( filepath_length > pi->offset && cmd_line == 0 ? false : true );
 
@@ -1044,7 +1044,7 @@ unsigned __stdcall read_thumbs( void *pArguments )
 			// Construct the filepath for each file.
 			if ( construct_filepath )
 			{
-				fname_length = wcslen( fname ) + 1;	// Include '\' character or NULL character
+				fname_length = ( int )wcslen( fname ) + 1;	// Include '\' character or NULL character
 
 				if ( cmd_line != 0 )
 				{

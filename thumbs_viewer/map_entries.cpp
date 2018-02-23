@@ -1,19 +1,19 @@
 /*
-    thumbs_viewer will extract thumbnail images from thumbs database files.
-    Copyright (C) 2011-2016 Eric Kutcher
+	thumbs_viewer will extract thumbnail images from thumbs database files.
+	Copyright (C) 2011-2018 Eric Kutcher
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+	This program is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+	You should have received a copy of the GNU General Public License
+	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include "map_entries.h"
@@ -69,7 +69,7 @@ unsigned long long hash_data( char *data, unsigned long long hash, short length 
 {
 	while ( length-- > 0 )
 	{
-		hash = ( ( ( hash * 0x820 ) + ( *data++ & 0x00000000000000FF ) ) + ( hash >> 2 ) ) ^ hash;
+		hash ^= ( ( ( hash * 0x820 ) + ( *data++ & 0x00000000000000FF ) ) + ( hash >> 2 ) );
 	}
 
 	return hash;
@@ -81,7 +81,7 @@ void hash_file( wchar_t *filepath, wchar_t *filename )
 	unsigned long long hash = 0x295BA83CF71232D9;
 
 	// Hash the filename.
-	hash = hash_data( ( char * )filename, hash, wcslen( filename ) * sizeof( wchar_t ) );
+	hash = hash_data( ( char * )filename, hash, ( short )( wcslen( filename ) * sizeof( wchar_t ) ) );
 
 	update_scan_info( hash, filepath );
 }
@@ -131,11 +131,11 @@ void traverse_directory( wchar_t *path )
 			else
 			{
 				// See if the file's extension is in our filter. Go to the next file if it's not.
-				wchar_t *ext = get_extension_from_filename( FindFileData.cFileName, wcslen( FindFileData.cFileName ) );
+				wchar_t *ext = get_extension_from_filename( FindFileData.cFileName, ( unsigned long )wcslen( FindFileData.cFileName ) );
 				if ( g_extension_filter[ 0 ] != 0 )
 				{
 					// Do a case-insensitive substring search for the extension.
-					int ext_length = wcslen( ext );
+					int ext_length = ( int )wcslen( ext );
 					wchar_t *temp_ext = ( wchar_t * )malloc( sizeof( wchar_t ) * ( ext_length + 3 ) );
 					for ( int i = 0; i < ext_length; ++i )
 					{
