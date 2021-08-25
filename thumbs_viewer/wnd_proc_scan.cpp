@@ -1,6 +1,6 @@
 /*
 	thumbs_viewer will extract thumbnail images from thumbs database files.
-	Copyright (C) 2011-2018 Eric Kutcher
+	Copyright (C) 2011-2021 Eric Kutcher
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -66,11 +66,11 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 			g_hWnd_static3 = CreateWindowA( WC_STATICA, "Current file/folder:", WS_CHILD, 20, 110, rc.right - 40, 15, hWnd, NULL, NULL, NULL );
 			g_hWnd_hashing = CreateWindowEx( WS_EX_CLIENTEDGE, WC_EDIT, NULL, ES_AUTOHSCROLL | ES_READONLY | WS_CHILD, 0, 0, 0, 0, hWnd, NULL, NULL, NULL );
 
-			g_hWnd_static4 = CreateWindowA( WC_STATICA, "Current file/folder hash:", WS_CHILD, 20, 155, rc.right - 310, 15, hWnd, NULL, NULL, NULL );
-			g_hWnd_static_hash = CreateWindow( WC_STATIC, NULL, WS_CHILD, rc.right - 290, 155, rc.right - 195, 15, hWnd, NULL, NULL, NULL );
+			g_hWnd_static4 = CreateWindowA( WC_STATICA, "Current file/folder hash:", WS_CHILD, 20, 155, 200, 15, hWnd, NULL, NULL, NULL );
+			g_hWnd_static_hash = CreateWindow( WC_STATIC, NULL, WS_CHILD, 225, 155, rc.right - 245, 23, hWnd, NULL, NULL, NULL );
 
-			g_hWnd_static5 = CreateWindowA( WC_STATICA, "Total files and/or folders:", WS_CHILD, 20, 175, rc.right - 310, 15, hWnd, NULL, NULL, NULL );
-			g_hWnd_static_count = CreateWindow( WC_STATIC, NULL, WS_CHILD, rc.right - 290, 175, rc.right - 195, 15, hWnd, NULL, NULL, NULL );
+			g_hWnd_static5 = CreateWindowA( WC_STATICA, "Total files and/or folders:", WS_CHILD, 20, 180, 200, 15, hWnd, NULL, NULL, NULL );
+			g_hWnd_static_count = CreateWindow( WC_STATIC, NULL, WS_CHILD, 225, 180, rc.right - 245, 23, hWnd, NULL, NULL, NULL );
 
 			g_hWnd_btn_details = CreateWindowA( WC_BUTTONA, "Show Details \xBB", WS_CHILD | WS_TABSTOP | WS_VISIBLE, 0, 0, 0, 0, hWnd, ( HMENU )BTN_DETAILS, NULL, NULL );
 
@@ -162,6 +162,8 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 				SetCursor( LoadCursor( NULL, IDC_ARROW ) );	// Default arrow.
 				wait_cursor = NULL;
 			}
+
+			return 0;
 		}
 		break;
 
@@ -266,7 +268,7 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					// Adjust the window height.
 					RECT rc;
 					GetWindowRect( hWnd, &rc );
-					SetWindowPos( hWnd, NULL, 0, 0, rc.right - rc.left, MIN_HEIGHT - ( g_show_details ? 45 : 135 ), SWP_NOMOVE );
+					SetWindowPos( hWnd, NULL, 0, 0, rc.right - rc.left, 320 - ( g_show_details ? 25 : 120 ), SWP_NOMOVE );
 				}
 				break;
 
@@ -317,11 +319,11 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 			// Allow our controls to move in relation to the parent window.
 			HDWP hdwp = BeginDeferWindowPos( 8 );
-			DeferWindowPos( hdwp, g_hWnd_path, HWND_TOP, 20, 35, rc.right - 75, 20, SWP_NOZORDER );
-			DeferWindowPos( hdwp, g_hWnd_load, HWND_TOP, rc.right - 50, 35, 30, 20, SWP_NOZORDER );
-			DeferWindowPos( hdwp, g_hWnd_extensions, HWND_TOP, 20, 80, rc.right - 145, 20, SWP_NOZORDER );
-			DeferWindowPos( hdwp, g_hWnd_chk_folders, HWND_TOP, rc.right - 120, 80, 100, 20, SWP_NOZORDER );
-			DeferWindowPos( hdwp, g_hWnd_hashing, HWND_TOP, 20, 125, rc.right - 40, 20, SWP_NOZORDER );
+			DeferWindowPos( hdwp, g_hWnd_path, HWND_TOP, 20, 35, rc.right - 75, 23, SWP_NOZORDER );
+			DeferWindowPos( hdwp, g_hWnd_load, HWND_TOP, rc.right - 50, 35, 30, 23, SWP_NOZORDER );
+			DeferWindowPos( hdwp, g_hWnd_extensions, HWND_TOP, 20, 80, rc.right - 145, 23, SWP_NOZORDER );
+			DeferWindowPos( hdwp, g_hWnd_chk_folders, HWND_TOP, rc.right - 120, 82, 100, 20, SWP_NOZORDER );
+			DeferWindowPos( hdwp, g_hWnd_hashing, HWND_TOP, 20, 125, rc.right - 40, 23, SWP_NOZORDER );
 			DeferWindowPos( hdwp, g_hWnd_btn_details, HWND_TOP, 10, rc.bottom - 32, 100, 23, SWP_NOZORDER );
 			DeferWindowPos( hdwp, g_hWnd_btn_scan, HWND_TOP, rc.right - 175, rc.bottom - 32, 80, 23, SWP_NOZORDER );
 			DeferWindowPos( hdwp, g_hWnd_btn_cancel, HWND_TOP, rc.right - 90, rc.bottom - 32, 80, 23, SWP_NOZORDER );
@@ -335,8 +337,8 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 		{
 			// Set the minimum dimensions that the window can be sized to.
 			( ( MINMAXINFO * )lParam )->ptMinTrackSize.x = MIN_WIDTH;
-			( ( MINMAXINFO * )lParam )->ptMinTrackSize.y = MIN_HEIGHT - ( g_show_details ? 45 : 135 );
-			( ( MINMAXINFO * )lParam )->ptMaxTrackSize.y = MIN_HEIGHT - ( g_show_details ? 45 : 135 );
+			( ( MINMAXINFO * )lParam )->ptMinTrackSize.y = 320 - ( g_show_details ? 25 : 120 );
+			( ( MINMAXINFO * )lParam )->ptMaxTrackSize.y = 320 - ( g_show_details ? 25 : 120 );
 
 			return 0;
 		}
@@ -368,6 +370,8 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 		case WM_ALERT:
 		{
 			MessageBoxA( hWnd, ( LPCSTR )lParam, PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONINFORMATION | MB_SETFOREGROUND );
+
+			return 0;
 		}
 		break;
 
@@ -436,6 +440,8 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 				SetWindowPos( hWnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE );
 				ShowWindow( hWnd, SW_SHOW );
 			}
+
+			return 0;
 		}
 		break;
 
@@ -445,5 +451,4 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 		}
 		break;
 	}
-	return TRUE;
 }

@@ -1,6 +1,6 @@
 /*
 	thumbs_viewer will extract thumbnail images from thumbs database files.
-	Copyright (C) 2011-2018 Eric Kutcher
+	Copyright (C) 2011-2021 Eric Kutcher
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -34,6 +34,7 @@
 #define MENU_REMOVE_SEL	1008
 #define MENU_SCAN		1009
 #define MENU_COPY_SEL	1010
+#define MENU_HOME_PAGE	1011
 
 #define UM_DISABLE			0
 #define UM_ENABLE			1

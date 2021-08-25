@@ -1,6 +1,6 @@
 /*
 	thumbs_viewer will extract thumbnail images from thumbs database files.
-	Copyright (C) 2011-2018 Eric Kutcher
+	Copyright (C) 2011-2021 Eric Kutcher
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -42,8 +42,10 @@
 #define PROGRAM_CAPTION		L"Thumbs Viewer"
 #define PROGRAM_CAPTION_A	"Thumbs Viewer"
 
-#define MIN_WIDTH			480
-#define MIN_HEIGHT			320
+#define HOME_PAGE			L"https://thumbsviewer.github.io/"
+
+#define MIN_WIDTH			640
+#define MIN_HEIGHT			480
 
 #define NUM_COLUMNS			7
 
@@ -57,6 +59,8 @@
 #define FIF_TYPE_CMYK_JPG	2
 #define FIF_TYPE_PNG		4
 #define FIF_TYPE_UNKNOWN	8
+
+#define _WIN32_WINNT_WIN10	0x0A00
 
 // Holds shared variables among database entries.
 struct shared_info
@@ -152,6 +156,8 @@ extern HCURSOR wait_cursor;			// Temporary cursor while processing entries.
 
 // Window variables
 extern RECT last_dim;				// Keeps track of the image window's dimension before it gets minimized.
+
+extern int g_border_width;			// Window border width.
 
 extern bool is_attached;			// Toggled when our windows are attached
 extern bool skip_main;				// Prevents the main window from moving the image window if it is about to attach.

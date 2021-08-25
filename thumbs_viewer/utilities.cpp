@@ -1,6 +1,6 @@
 /*
 	thumbs_viewer will extract thumbnail images from thumbs database files.
-	Copyright (C) 2011-2018 Eric Kutcher
+	Copyright (C) 2011-2021 Eric Kutcher
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -31,12 +31,6 @@ bool in_thread = false;				// Flag to indicate that we're in a worker thread.
 bool skip_draw = false;				// Prevents WM_DRAWITEM from accessing listview items while we're removing them.
 
 dllrbt_tree *fileinfo_tree = NULL;	// Red-black tree of fileinfo structures.
-
-bool is_close( int a, int b )
-{
-	// See if the distance between two points is less than the snap width.
-	return abs( a - b ) < SNAP_WIDTH;
-}
 
 void Processing_Window( bool enable )
 {
@@ -381,7 +375,7 @@ Gdiplus::Image *create_image( char *buffer, unsigned long size, unsigned char fo
 }
 
 // This will allow our main thread to continue while secondary threads finish their processing.
-unsigned __stdcall cleanup( void *pArguments )
+unsigned __stdcall cleanup( void * /*pArguments*/ )
 {
 	// This semaphore will be released when the thread gets killed.
 	shutdown_semaphore = CreateSemaphore( NULL, 0, 1, NULL );
@@ -400,7 +394,7 @@ unsigned __stdcall cleanup( void *pArguments )
 	return 0;
 }
 
-unsigned __stdcall copy_items( void *pArguments )
+unsigned __stdcall copy_items( void * /*pArguments*/ )
 {
 	// This will block every other thread from entering until the first thread is complete.
 	EnterCriticalSection( &pe_cs );
@@ -645,7 +639,7 @@ CLEANUP:
 	return 0;
 }
 
-unsigned __stdcall remove_items( void *pArguments )
+unsigned __stdcall remove_items( void * /*pArguments*/ )
 {
 	// This will block every other thread from entering until the first thread is complete.
 	EnterCriticalSection( &pe_cs );

@@ -1,6 +1,6 @@
 /*
 	thumbs_viewer will extract thumbnail images from thumbs database files.
-	Copyright (C) 2011-2018 Eric Kutcher
+	Copyright (C) 2011-2021 Eric Kutcher
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -24,6 +24,8 @@
 
 #define SNAP_WIDTH		10		// The minimum distance at which our windows will attach together.
 
+#define is_close( a, b ) ( abs( ( a ) - ( b ) ) < SNAP_WIDTH )
+
 unsigned __stdcall cleanup( void *pArguments );
 unsigned __stdcall remove_items( void *pArguments );
 unsigned __stdcall save_csv( void *pArguments );
@@ -38,8 +40,6 @@ char *escape_csv( const char *string );
 void cleanup_shared_info( shared_info **si );
 void cleanup_fileinfo_tree();
 void create_fileinfo_tree();
-
-bool is_close( int a, int b );
 
 void Processing_Window( bool enable );
 

@@ -1,6 +1,6 @@
 /*
 	thumbs_viewer will extract thumbnail images from thumbs database files.
-	Copyright (C) 2011-2018 Eric Kutcher
+	Copyright (C) 2011-2021 Eric Kutcher
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -158,7 +158,6 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 		}
 		else if ( fi->si->short_stream_container != NULL && fi->si->ssat != NULL )	// Stream is in the short stream.
 		{
-			DWORD read = 0;
 			long ssat_index = fi->offset;
 			unsigned long sector_offset = 0;
 

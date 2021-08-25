@@ -1,6 +1,6 @@
 /*
 	thumbs_viewer will extract thumbnail images from thumbs database files.
-	Copyright (C) 2011-2018 Eric Kutcher
+	Copyright (C) 2011-2021 Eric Kutcher
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -110,11 +110,21 @@ void CreateMenus()
 	InsertMenuItemA( hMenuSub_tools, 0, TRUE, &mii );
 
 	// HELP MENU
+	mii.dwTypeData = "Thumbs Viewer &Home Page";
+	mii.cch = 24;
+	mii.wID = MENU_HOME_PAGE;
+	mii.fState = MFS_ENABLED;
+	InsertMenuItemA( hMenuSub_help, 0, TRUE, &mii );
+
+	mii.fType = MFT_SEPARATOR;
+	InsertMenuItemA( hMenuSub_help, 1, TRUE, &mii );
+
+	mii.fType = MFT_STRING;
 	mii.dwTypeData = "&About";
 	mii.cch = 6;
 	mii.wID = MENU_ABOUT;
 	mii.fState = MFS_ENABLED;
-	InsertMenuItemA( hMenuSub_help, 0, TRUE, &mii );
+	InsertMenuItemA( hMenuSub_help, 2, TRUE, &mii );
 
 	// MENU BAR
 	mii.fMask = MIIM_TYPE | MIIM_SUBMENU;

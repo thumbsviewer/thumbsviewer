@@ -1,6 +1,6 @@
 /*
 	thumbs_viewer will extract thumbnail images from thumbs database files.
-	Copyright (C) 2011-2018 Eric Kutcher
+	Copyright (C) 2011-2021 Eric Kutcher
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -165,7 +165,7 @@ void traverse_directory( wchar_t *path )
 	}
 }
 
-unsigned __stdcall map_entries( void *pArguments )
+unsigned __stdcall map_entries( void * /*pArguments*/ )
 {
 	// This will block every other thread from entering until the first thread is complete.
 	EnterCriticalSection( &pe_cs );
