@@ -191,7 +191,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 			SendMessageA( g_hWnd_list, LVM_INSERTCOLUMNA, 4, ( LPARAM )&lvc );
 
 			lvc.pszText = "System";
-			lvc.cx = 155;
+			lvc.cx = 190;
 			SendMessageA( g_hWnd_list, LVM_INSERTCOLUMNA, 5, ( LPARAM )&lvc );
 
 			lvc.pszText = "Location";
@@ -611,7 +611,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 					case MENU_ABOUT:
 					{
-						MessageBoxA( hWnd, "Thumbs Viewer is made free under the GPLv3 license.\r\n\r\nVersion 1.0.2.9\r\n\r\nCopyright \xA9 2011-2021 Eric Kutcher", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONINFORMATION );
+						MessageBoxA( hWnd, "Thumbs Viewer is made free under the GPLv3 license.\r\n\r\nVersion 1.0.3.0\r\n\r\nCopyright \xA9 2011-2021 Eric Kutcher", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONINFORMATION );
 					}
 					break;
 
@@ -1138,7 +1138,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 							}
 							else if ( fi->si->system == 3 )
 							{
-								buf = L"Windows Vista/2008/7/8/8.1";
+								buf = L"Windows Vista/2008/7/8/8.1/10";
 							}
 							else
 							{

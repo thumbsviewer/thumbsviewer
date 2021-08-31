@@ -522,8 +522,8 @@ unsigned __stdcall copy_items( void * /*pArguments*/ )
 					}
 					else if ( fi->si->system == 3 )
 					{
-						buf = L"Windows Vista/2008/7/8/8.1";
-						value_length = 26;
+						buf = L"Windows Vista/2008/7/8/8.1/10";
+						value_length = 29;
 					}
 					else
 					{
@@ -915,7 +915,7 @@ unsigned __stdcall save_csv( void *pArguments )
 					case 3:
 					{
 						has_version = false;
-						system_string = "Windows Vista/2008/7/8/8.1";
+						system_string = "Windows Vista/2008/7/8/8.1/10";
 					}
 					break;
 
@@ -928,7 +928,7 @@ unsigned __stdcall save_csv( void *pArguments )
 				}
 
 				// See if the next entry can fit in the buffer. If it can't, then we dump the buffer.
-				if ( write_buf_offset + filename_length + dbpath_length + ( 10 * 10 ) + ( 20 * 1 ) + 26 + 30 + 1 > size )
+				if ( write_buf_offset + filename_length + dbpath_length + ( 10 * 10 ) + ( 20 * 1 ) + 29 + 30 + 1 > size )
 				{
 					// Dump the buffer.
 					WriteFile( hFile, write_buf, write_buf_offset, &write, NULL );

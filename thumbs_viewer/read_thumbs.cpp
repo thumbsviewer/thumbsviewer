@@ -119,11 +119,17 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 
 			size = total - header_offset;
 
-			// See if there's a second header.
 			// The first header will look like this:
-			// Header length (4 bytes) - I wonder if this value also dictates the content type?
+			// Header length (4 bytes)
 			// Some value (4 bytes)
 			// Content length (4 bytes)
+			//
+			// Vista and newer
+			//
+			// Some value (4 bytes)
+			// Windows Vista/7: Thumbcache ID, Window 8/8.1/10: Hashed File ID and FILETIME (8 bytes)
+
+			// See if there's a second header.
 			if ( size > 2 && memcmp( buf + header_offset, "\xFF\xD8", 2 ) != 0 )
 			{
 				// Second header exists. Reconstruct the image.
@@ -209,9 +215,15 @@ char *extract( fileinfo *fi, unsigned long &size, unsigned long &header_offset )
 			size = fi->size - header_offset;
 
 			// The first header will look like this:
-			// Header length (4 bytes) - I wonder if this value also dictates the content type?
+			// Header length (4 bytes)
 			// Some value (4 bytes)
 			// Content length (4 bytes)
+			//
+			// Vista and newer
+			//
+			// Some value (4 bytes)
+			// Windows Vista/7: Thumbcache ID, Window 8/8.1/10: Hashed File ID and FILETIME (8 bytes)
+
 			// See if there's a second header.
 			if ( size > 2 && memcmp( buf + header_offset, "\xFF\xD8", 2 ) != 0 )
 			{

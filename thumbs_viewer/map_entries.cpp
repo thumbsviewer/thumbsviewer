@@ -30,8 +30,36 @@ bool g_show_details = false;						// Show details in the scan window.
 
 bool g_kill_scan = true;							// Stop a file scan.
 
+bool is_win_8_or_higher = true;						// Windows 8 and newer use a different initial hash value.
+
 unsigned int file_count = 0;						// Number of files scanned.
 unsigned int match_count = 0;						// Number of files that match an entry hash.
+
+//#define _WIN32_WINNT_WIN7		0x0601
+#define _WIN32_WINNT_WIN8		0x0602
+//#define _WIN32_WINNT_WINBLUE	0x0603
+
+BOOL IsWindowsVersionOrGreater( WORD wMajorVersion, WORD wMinorVersion, WORD wServicePackMajor )
+{
+	OSVERSIONINFOEXW osvi = { sizeof( osvi ), 0, 0, 0, 0, { 0 }, 0, 0 };
+	DWORDLONG const dwlConditionMask = VerSetConditionMask(
+		VerSetConditionMask(
+		VerSetConditionMask(
+		0, VER_MAJORVERSION, VER_GREATER_EQUAL ),
+		   VER_MINORVERSION, VER_GREATER_EQUAL ),
+		   VER_SERVICEPACKMAJOR, VER_GREATER_EQUAL );
+
+	osvi.dwMajorVersion = wMajorVersion;
+	osvi.dwMinorVersion = wMinorVersion;
+	osvi.wServicePackMajor = wServicePackMajor;
+
+	return VerifyVersionInfoW( &osvi, VER_MAJORVERSION | VER_MINORVERSION | VER_SERVICEPACKMAJOR, dwlConditionMask ) != FALSE;
+}
+
+BOOL IsWindows8OrGreater()
+{
+	return IsWindowsVersionOrGreater( HIBYTE( _WIN32_WINNT_WIN8 ), LOBYTE( _WIN32_WINNT_WIN8 ), 0 );
+}
 
 void update_scan_info( unsigned long long hash, wchar_t *filepath )
 {
@@ -78,13 +106,52 @@ unsigned long long hash_data( char *data, unsigned long long hash, short length 
 void hash_file( wchar_t *filepath, wchar_t *filename )
 {
 	// Initial hash value. This value was found in thumbcache.dll.
-	unsigned long long hash = 0x295BA83CF71232D9;
+	unsigned long long hash;
+
+	if ( !is_win_8_or_higher )
+	{
+		hash = 0x295BA83CF71232D9;
+	}
+	else
+	{
+		hash = 0x68DFB54498C54783;
+	}
 
 	// Hash the filename.
 	hash = hash_data( ( char * )filename, hash, ( short )( wcslen( filename ) * sizeof( wchar_t ) ) );
 
 	update_scan_info( hash, filepath );
 }
+
+/*
+// The header value for entries created on Windows Vista and newer will contain 8 bytes that are used to identify the original file.
+// On Windows Vista and 7 these 8 bytes are the original file's Thumbcache ID. The algorithm for generating that can be found in my Thumbcache Viewer project.
+// On Windows 8 and newer these 8 bytes are generated using the algorithm below. 
+unsigned long long hash_id_and_date( wchar_t *filepath )
+{
+	// Initial hash value. This value was found in thumbcache.dll.
+	unsigned long long hash = 0xBBA03D3F2F654661;
+
+	HANDLE hFile = CreateFile( filepath, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL );
+	if ( hFile != INVALID_HANDLE_VALUE )
+	{
+		// Hash File ID - found in the Master File Table.
+		BY_HANDLE_FILE_INFORMATION bhfi;
+		GetFileInformationByHandle( hFile, &bhfi );
+		CloseHandle( hFile );
+		unsigned long long file_id = bhfi.nFileIndexHigh;
+		file_id = ( file_id << 32 ) | bhfi.nFileIndexLow;
+
+		hash = hash_data( ( char * )&file_id, hash, sizeof( unsigned long long ) );
+
+		// Hash Last Modified FILETIME.
+		return hash_data( ( char * )&bhfi.ftLastWriteTime, hash, sizeof( unsigned long long ) );
+	}
+	else
+	{
+		return 0;
+	}
+}*/
 
 void traverse_directory( wchar_t *path )
 {
@@ -180,6 +247,8 @@ unsigned __stdcall map_entries( void * /*pArguments*/ )
 
 	file_count = 0;		// Reset the file count.
 	match_count = 0;	// Reset the match count.
+
+	is_win_8_or_higher = ( IsWindows8OrGreater() != FALSE ? true : false );
 
 	traverse_directory( g_filepath );
 
