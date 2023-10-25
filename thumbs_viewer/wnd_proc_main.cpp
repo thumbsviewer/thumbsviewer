@@ -1,6 +1,6 @@
 /*
 	thumbs_viewer will extract thumbnail images from thumbs database files.
-	Copyright (C) 2011-2021 Eric Kutcher
+	Copyright (C) 2011-2023 Eric Kutcher
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -140,8 +140,8 @@ int CALLBACK CompareFunc( LPARAM lParam1, LPARAM lParam2, LPARAM lParamSort )
 
 LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam )
 {
-    switch ( msg )
-    {
+	switch ( msg )
+	{
 		case WM_CREATE:
 		{
 			CreateMenus();
@@ -440,7 +440,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 						wmemset( pi->filepath, 0, MAX_PATH * MAX_PATH );
 						OPENFILENAME ofn = { NULL };
 						ofn.lStructSize = sizeof( OPENFILENAME );
-						ofn.lpstrFilter = L"Thumbs Database Files (*.db)\0*.db\0All Files (*.*)\0*.*\0";
+						ofn.lpstrFilter = L"Thumbs Database Files (*.db)\0*.db\0All Files (*.*)\0*.*\0\0";
 						ofn.lpstrFile = pi->filepath;
 						ofn.nMaxFile = MAX_PATH * MAX_PATH; // If all files are named Thumbs.db, then this would contain around 6000+ files. It's unrealistic, but it doesn't take up much.
 						ofn.lpstrTitle = L"Open a Thumbs Database file";
@@ -532,7 +532,7 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 						OPENFILENAME ofn = { 0 };
 						ofn.lStructSize = sizeof( OPENFILENAME );
 						ofn.hwndOwner = hWnd;
-						ofn.lpstrFilter = L"CSV (Comma delimited) (*.csv)\0*.csv\0";
+						ofn.lpstrFilter = L"CSV (Comma delimited) (*.csv)\0*.csv\0\0";
 						ofn.lpstrDefExt = L"csv";
 						ofn.lpstrTitle = L"Export list to a CSV (comma-separated values) file";
 						ofn.lpstrFile = file_path;
@@ -611,7 +611,13 @@ LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 					case MENU_ABOUT:
 					{
-						MessageBoxA( hWnd, "Thumbs Viewer is made free under the GPLv3 license.\r\n\r\nVersion 1.0.3.0\r\n\r\nCopyright \xA9 2011-2021 Eric Kutcher", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONINFORMATION );
+						MessageBoxA( hWnd, "Thumbs Viewer is made free under the GPLv3 license.\r\n\r\nVersion 1.0.3.1 ("
+#ifdef _WIN64
+										   "64"
+#else
+										   "32"
+#endif
+										   "-bit)\r\n\r\nCopyright \xA9 2011-2023 Eric Kutcher", PROGRAM_CAPTION_A, MB_APPLMODAL | MB_ICONINFORMATION );
 					}
 					break;
 

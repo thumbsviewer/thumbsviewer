@@ -1,6 +1,6 @@
 /*
 	thumbs_viewer will extract thumbnail images from thumbs database files.
-	Copyright (C) 2011-2021 Eric Kutcher
+	Copyright (C) 2011-2023 Eric Kutcher
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -41,8 +41,8 @@ HWND g_hWnd_static5 = NULL;
 
 LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam )
 {
-    switch ( msg )
-    {
+	switch ( msg )
+	{
 		case WM_CREATE:
 		{
 			RECT rc;
@@ -57,20 +57,20 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 			g_hWnd_load = CreateWindowA( WC_BUTTONA, "...", WS_CHILD | WS_TABSTOP | WS_VISIBLE, 0, 0, 0, 0, hWnd, ( HMENU )BTN_LOAD, NULL, NULL );
 
-			HWND g_hWnd_static2 = CreateWindowA( WC_STATICA, "Limit scan to the following file types:", WS_CHILD | WS_VISIBLE, 20, 65, rc.right - 40, 15, hWnd, NULL, NULL, NULL );
+			HWND g_hWnd_static2 = CreateWindowA( WC_STATICA, "Limit scan to the following file types:", WS_CHILD | WS_VISIBLE, 20, 68, rc.right - 40, 15, hWnd, NULL, NULL, NULL );
 			g_hWnd_extensions = CreateWindowEx( WS_EX_CLIENTEDGE, WC_EDIT, L".jpg|.jpeg|.png|.bmp|.gif", ES_AUTOHSCROLL | WS_CHILD | WS_TABSTOP | WS_VISIBLE, 0, 0, 0, 0, hWnd, NULL, NULL, NULL );
 			SendMessage( g_hWnd_extensions, EM_LIMITTEXT, MAX_PATH - 1, 0 );
 
 			g_hWnd_chk_folders = CreateWindowA( WC_BUTTONA, "Include Folders", BS_AUTOCHECKBOX | WS_CHILD | WS_TABSTOP | WS_VISIBLE, 0, 0, 0, 0, hWnd, NULL, NULL, NULL );
 
-			g_hWnd_static3 = CreateWindowA( WC_STATICA, "Current file/folder:", WS_CHILD, 20, 110, rc.right - 40, 15, hWnd, NULL, NULL, NULL );
+			g_hWnd_static3 = CreateWindowA( WC_STATICA, "Current file/folder:", WS_CHILD, 20, 116, rc.right - 40, 15, hWnd, NULL, NULL, NULL );
 			g_hWnd_hashing = CreateWindowEx( WS_EX_CLIENTEDGE, WC_EDIT, NULL, ES_AUTOHSCROLL | ES_READONLY | WS_CHILD, 0, 0, 0, 0, hWnd, NULL, NULL, NULL );
 
-			g_hWnd_static4 = CreateWindowA( WC_STATICA, "Current file/folder hash:", WS_CHILD, 20, 155, 200, 15, hWnd, NULL, NULL, NULL );
-			g_hWnd_static_hash = CreateWindow( WC_STATIC, NULL, WS_CHILD, 225, 155, rc.right - 245, 23, hWnd, NULL, NULL, NULL );
+			g_hWnd_static4 = CreateWindowA( WC_STATICA, "Current file/folder hash:", WS_CHILD, 20, 164, 200, 15, hWnd, NULL, NULL, NULL );
+			g_hWnd_static_hash = CreateWindow( WC_STATIC, NULL, WS_CHILD, 225, 164, rc.right - 245, 15, hWnd, NULL, NULL, NULL );
 
-			g_hWnd_static5 = CreateWindowA( WC_STATICA, "Total files and/or folders:", WS_CHILD, 20, 180, 200, 15, hWnd, NULL, NULL, NULL );
-			g_hWnd_static_count = CreateWindow( WC_STATIC, NULL, WS_CHILD, 225, 180, rc.right - 245, 23, hWnd, NULL, NULL, NULL );
+			g_hWnd_static5 = CreateWindowA( WC_STATICA, "Total files and/or folders:", WS_CHILD, 20, 183, 200, 15, hWnd, NULL, NULL, NULL );
+			g_hWnd_static_count = CreateWindow( WC_STATIC, NULL, WS_CHILD, 225, 183, rc.right - 245, 15, hWnd, NULL, NULL, NULL );
 
 			g_hWnd_btn_details = CreateWindowA( WC_BUTTONA, "Show Details \xBB", WS_CHILD | WS_TABSTOP | WS_VISIBLE, 0, 0, 0, 0, hWnd, ( HMENU )BTN_DETAILS, NULL, NULL );
 
@@ -268,7 +268,7 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 					// Adjust the window height.
 					RECT rc;
 					GetWindowRect( hWnd, &rc );
-					SetWindowPos( hWnd, NULL, 0, 0, rc.right - rc.left, 320 - ( g_show_details ? 25 : 120 ), SWP_NOMOVE );
+					SetWindowPos( hWnd, NULL, 0, 0, rc.right - rc.left, 322 - ( g_show_details ? 34 : 120 ), SWP_NOMOVE );
 				}
 				break;
 
@@ -319,11 +319,11 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 
 			// Allow our controls to move in relation to the parent window.
 			HDWP hdwp = BeginDeferWindowPos( 8 );
-			DeferWindowPos( hdwp, g_hWnd_path, HWND_TOP, 20, 35, rc.right - 75, 23, SWP_NOZORDER );
-			DeferWindowPos( hdwp, g_hWnd_load, HWND_TOP, rc.right - 50, 35, 30, 23, SWP_NOZORDER );
-			DeferWindowPos( hdwp, g_hWnd_extensions, HWND_TOP, 20, 80, rc.right - 145, 23, SWP_NOZORDER );
-			DeferWindowPos( hdwp, g_hWnd_chk_folders, HWND_TOP, rc.right - 120, 82, 100, 20, SWP_NOZORDER );
-			DeferWindowPos( hdwp, g_hWnd_hashing, HWND_TOP, 20, 125, rc.right - 40, 23, SWP_NOZORDER );
+			DeferWindowPos( hdwp, g_hWnd_path, HWND_TOP, 20, 38, rc.right - 75, 23, SWP_NOZORDER );
+			DeferWindowPos( hdwp, g_hWnd_load, HWND_TOP, rc.right - 50, 38, 30, 23, SWP_NOZORDER );
+			DeferWindowPos( hdwp, g_hWnd_extensions, HWND_TOP, 20, 86, rc.right - 145, 23, SWP_NOZORDER );
+			DeferWindowPos( hdwp, g_hWnd_chk_folders, HWND_TOP, rc.right - 120, 88, 100, 20, SWP_NOZORDER );
+			DeferWindowPos( hdwp, g_hWnd_hashing, HWND_TOP, 20, 134, rc.right - 40, 23, SWP_NOZORDER );
 			DeferWindowPos( hdwp, g_hWnd_btn_details, HWND_TOP, 10, rc.bottom - 32, 100, 23, SWP_NOZORDER );
 			DeferWindowPos( hdwp, g_hWnd_btn_scan, HWND_TOP, rc.right - 175, rc.bottom - 32, 80, 23, SWP_NOZORDER );
 			DeferWindowPos( hdwp, g_hWnd_btn_cancel, HWND_TOP, rc.right - 90, rc.bottom - 32, 80, 23, SWP_NOZORDER );
@@ -337,8 +337,8 @@ LRESULT CALLBACK ScanWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam 
 		{
 			// Set the minimum dimensions that the window can be sized to.
 			( ( MINMAXINFO * )lParam )->ptMinTrackSize.x = MIN_WIDTH;
-			( ( MINMAXINFO * )lParam )->ptMinTrackSize.y = 320 - ( g_show_details ? 25 : 120 );
-			( ( MINMAXINFO * )lParam )->ptMaxTrackSize.y = 320 - ( g_show_details ? 25 : 120 );
+			( ( MINMAXINFO * )lParam )->ptMinTrackSize.y = 322 - ( g_show_details ? 34 : 120 );
+			( ( MINMAXINFO * )lParam )->ptMaxTrackSize.y = ( ( MINMAXINFO * )lParam )->ptMinTrackSize.y;
 
 			return 0;
 		}

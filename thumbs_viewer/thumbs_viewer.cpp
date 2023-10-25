@@ -1,6 +1,6 @@
 /*
 	thumbs_viewer will extract thumbnail images from thumbs database files.
-	Copyright (C) 2011-2021 Eric Kutcher
+	Copyright (C) 2011-2023 Eric Kutcher
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -137,7 +137,7 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR lpCm
 		goto CLEANUP;
 	}
 
-	g_hWnd_scan = CreateWindow( L"scan", L"Map File Paths to Entry Hashes", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_CLIPCHILDREN, ( ( GetSystemMetrics( SM_CXSCREEN ) - MIN_WIDTH ) / 2 ), ( ( GetSystemMetrics( SM_CYSCREEN ) - ( 320 - 120 ) ) / 2 ), MIN_WIDTH, ( 320 - 120 ), g_hWnd_main, NULL, NULL, NULL );
+	g_hWnd_scan = CreateWindow( L"scan", L"Map File Paths to Entry Hashes", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_CLIPCHILDREN, ( ( GetSystemMetrics( SM_CXSCREEN ) - MIN_WIDTH ) / 2 ), ( ( GetSystemMetrics( SM_CYSCREEN ) - ( 322 - 120 ) ) / 2 ), MIN_WIDTH, ( 322 - 120 ), g_hWnd_main, NULL, NULL, NULL );
 
 	if ( !g_hWnd_scan )
 	{

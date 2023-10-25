@@ -1,6 +1,6 @@
 /*
 	thumbs_viewer will extract thumbnail images from thumbs database files.
-	Copyright (C) 2011-2021 Eric Kutcher
+	Copyright (C) 2011-2023 Eric Kutcher
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -45,8 +45,8 @@ bool timer_active = false;	// Toggled when the timer is active and used to reset
 
 LRESULT CALLBACK ImageWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam )
 {
-    switch ( msg )
-    {
+	switch ( msg )
+	{
 		case WM_KEYDOWN:
 		{
 			switch ( wParam )
@@ -644,7 +644,7 @@ LRESULT CALLBACK ImageWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
 }
 
 VOID CALLBACK TimerProc( HWND hWnd, UINT /*msg*/, UINT /*idTimer*/, DWORD /*dwTime*/ )
-{ 
+{
 	zoom = false;
 
 	// Redraw our image.
